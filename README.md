@@ -84,7 +84,14 @@ BASE_PATH=/your-repo-name/ npm run build
 
 ## Deploying
 
-Pushing to `main` builds and publishes to GitHub Pages automatically via `.github/workflows/deploy.yml`. Enable it once under **Settings → Pages → Source → GitHub Actions**.
+The live build is published from the `gh-pages` branch. To update it:
+
+```bash
+BASE_PATH=/pale-hour/ npm run build
+npx gh-pages -d dist        # or push dist/ to the gh-pages branch by hand
+```
+
+GitHub Pages is set to serve `gh-pages` at the repository root.
 
 ## How it is put together
 
