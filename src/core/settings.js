@@ -15,8 +15,13 @@ export const DEFAULTS = {
 };
 
 /**
- * Difficulty controls how the entity behaves, not how much damage you take —
+ * Difficulty controls how the forest behaves, not how much damage you take —
  * there is no health bar, only how much rope you get.
+ *
+ * `watchers` are the freeze-when-seen entities that kill with static.
+ * `stalkers` are chasers that ignore your gaze and kill on contact; they wake
+ * one at a time once `stalkerFrom` fragments have been taken, so early game
+ * stays a search and late game becomes a chase.
  */
 export const DIFFICULTIES = {
   wander: {
@@ -34,6 +39,10 @@ export const DIFFICULTIES = {
     staticDecay: 0.42,
     batteryDrain: 0.010,
     killDistance: 3.2,
+    watchers: 1,
+    stalkers: 1,
+    stalkerFrom: 4,   // fragments before the first chaser wakes
+    chaseSpeed: 2.7,
   },
   dread: {
     name: 'DREAD',
@@ -50,6 +59,10 @@ export const DIFFICULTIES = {
     staticDecay: 0.30,
     batteryDrain: 0.016,
     killDistance: 3.6,
+    watchers: 1,
+    stalkers: 2,
+    stalkerFrom: 2,
+    chaseSpeed: 3.3,
   },
   static: {
     name: 'STATIC',
@@ -66,6 +79,10 @@ export const DIFFICULTIES = {
     staticDecay: 0.22,
     batteryDrain: 0.022,
     killDistance: 4.0,
+    watchers: 2,
+    stalkers: 3,
+    stalkerFrom: 1,
+    chaseSpeed: 3.9,
   },
   paleHour: {
     name: 'PALE HOUR',
@@ -82,6 +99,10 @@ export const DIFFICULTIES = {
     staticDecay: 0.15,
     batteryDrain: 0.030,
     killDistance: 4.4,
+    watchers: 2,
+    stalkers: 4,
+    stalkerFrom: 0,
+    chaseSpeed: 4.5,
   },
 };
 

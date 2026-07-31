@@ -26,10 +26,11 @@ It runs entirely in the browser on WebGL2, and **it ships with no asset files at
 | **It freezes when watched** | It never advances while in view. That makes *you* the one who has to break the stalemate — and turning away is always the hard choice. |
 | **It repositions where you'd have missed it** | Every move requires line of sight from the destination and a minimum distance, and it prefers to land *behind* you. It never pops in at arm's length. |
 | **The world tightens as you collect** | Fog thickens, moonlight dies, and its patience shortens with every page. Eight is not a countdown to safety. |
+| **Buildings you go inside** | Four log cabins and a two-room farmhouse, with real doorways and windows cut out of both the geometry and the collision. Interiors have stoves, bunks, tables and shelving, and their walls genuinely block line of sight — a cabin is the best place to break a stare, and also a box with one door. |
+| **Two kinds of hunter** | *Watchers* freeze while you look at them and kill you with static. *Stalkers* do not care where you are looking — they simply walk at you and kill on contact. Stalkers wake one at a time as you collect, so the run starts as a search and ends as a chase. They are slower than a sprint on purpose: always escapable, always exhausting. |
 | **There is an exit** | After the eighth fragment the gate at the treeline lights up and you have to actually reach it. The run ends in a chase, not a fade-out. |
 | **Resources that matter** | A torch battery that visibly dies, and breath that limits sprinting. Killing the light hides you — and hides the pages too. |
 | **A real camcorder lens** | Barrel distortion, chroma bleed, tracking slip, dropout lines, interlace shimmer and a static storm, all in one shader pass. |
-| **Three camera modes** | First person, over-the-shoulder third person with a visible body, and a wide boom. The torch stays on the player's head in every mode, and the boom shortens automatically rather than clipping through trees. |
 | **A world that moves** | 26,000 wind-animated grass tufts, swaying canopies and undergrowth on a shared gust front, dust motes drifting through the torch beam, 2,600 twinkling stars and a cratered moon. |
 | **Sound that tracks your body** | Breathing that speeds up and turns ragged as you burn through stamina, a two-transient flashlight click, footsteps timed by distance travelled, a dread-driven score that adds voices as it builds, and the entity's own inharmonic vocalisations. |
 
@@ -42,7 +43,6 @@ It runs entirely in the browser on WebGL2, and **it ships with no asset files at
 | `Ctrl` / `C` | Crouch — slow, quiet, small |
 | `F` | Toggle flashlight |
 | `E` / `Space` | Take fragment |
-| `V` | Cycle camera — first person → third person → wide |
 | `Esc` | Pause |
 
 Mouse look uses pointer lock. If your browser refuses pointer lock, the game falls back to click-and-drag looking and tells you so.
@@ -105,6 +105,7 @@ src/
 │   └── rng.js           seeded RNG, value noise, fbm, easing
 ├── world/
 │   ├── textures.js      every texture in the game, drawn to canvas
+│   ├── buildings.js     enterable cabins and farmhouse, walls with openings
 │   ├── sky.js           stars, the moon and its haze
 │   ├── grass.js         instanced grass tufts and drifting motes
 │   ├── wind.js          one shared wind, patched into any material
@@ -129,7 +130,7 @@ Two notes for anyone reading the code:
 
 Most of the feel lives in two places:
 
-- `src/core/settings.js` — the `DIFFICULTIES` table: spawn distances, stalk speed, reposition interval, how fast static fills and drains, battery drain.
+- `src/core/settings.js` — the `DIFFICULTIES` table: how many watchers and stalkers, how fast chasers move, when each wakes, spawn distances, reposition interval, how fast static fills and drains, battery drain.
 - `src/entities/entity.js` — the four rules the AI is built on are written at the top of the file. Change them and it becomes a different game.
 
 ## Contributing

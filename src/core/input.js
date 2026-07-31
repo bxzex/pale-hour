@@ -14,7 +14,6 @@ const BINDINGS = {
   crouch: ['ControlLeft', 'ControlRight', 'KeyC'],
   light: ['KeyF'],
   use: ['KeyE', 'Space'],
-  view: ['KeyV'],
 };
 
 export class Input {

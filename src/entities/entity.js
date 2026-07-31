@@ -20,6 +20,16 @@ import { WORLD_HALF } from '../world/terrain.js';
 
 const HEIGHT = 2.72;
 
+/**
+ * Two kinds of thing in the forest.
+ *
+ * WATCHER is the original: it freezes while observed and kills you with static.
+ * STALKER does not care whether you are looking — it walks at you, constantly,
+ * and only contact matters. It is slower than a sprint on purpose, so it is
+ * always escapable and always exhausting.
+ */
+export const ARCHETYPE = { WATCHER: 'watcher', STALKER: 'stalker' };
+
 export const STATE = {
   DORMANT: 'dormant',
   LURK: 'lurk',
@@ -28,7 +38,11 @@ export const STATE = {
 };
 
 export class Entity {
-  constructor(terrain, forest, props, difficulty, rng, scene) {
+  constructor(terrain, forest, props, difficulty, rng, scene, options = {}) {
+    this.archetype = options.archetype ?? ARCHETYPE.WATCHER;
+    this.activateAt = options.activateAt ?? 0;   // fragments needed before it wakes
+    this.chaseSpeed = options.chaseSpeed ?? 3.4;
+    this.scale = options.scale ?? 1;
     this.terrain = terrain;
     this.forest = forest;
     this.props = props;
@@ -172,6 +186,16 @@ export class Entity {
     }
 
     this.group.add(head, neck, torso, shoulders, shroud);
+
+    if (this.archetype === ARCHETYPE.STALKER) {
+      // Squat, wide and bent forward — reads as a runner even standing still.
+      this.group.scale.set(1.18 * this.scale, 0.74 * this.scale, 1.18 * this.scale);
+      shoulders.scale.set(1.45, 1.6, 1.5);
+      head.scale.set(1.15, 1.05, 1.05);
+      this.skin.color.setHex(0xb9a892);
+    } else {
+      this.group.scale.setScalar(this.scale);
+    }
     this.group.traverse((o) => {
       if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; }
     });
@@ -226,8 +250,11 @@ export class Entity {
 
     this._updateObservation(dt, player, camera, eye, chest, dist);
 
-    // ── static: the only resource that kills you
-    if (this.observed) {
+    // ── static: watchers only. A stalker is a physical problem, not a
+    // psychological one, so staring at it costs you nothing.
+    if (this.archetype === ARCHETYPE.STALKER) {
+      this.static = clamp01(this.static - dt * d.staticDecay);
+    } else if (this.observed) {
       // closer + longer look = faster fill; a flick of the eyes is cheap
       const near = 1 - smoothstep(6, 48, dist);
       const ramp = smoothstep(0, 0.45, this.observedTime);
@@ -237,7 +264,7 @@ export class Entity {
     }
 
     // ── dread: proximity pressure, felt through audio and the lens
-    const prox = (1 - smoothstep(4, 34, dist)) * (this.observed ? 1 : 0.55);
+    const prox = (1 - smoothstep(4, 34, dist)) * (this.archetype === ARCHETYPE.STALKER ? 1 : (this.observed ? 1 : 0.55));
     this.proximity = damp(this.proximity, Math.max(prox, this.static * 0.8), 3.5, dt);
 
     // ── movement
@@ -256,7 +283,11 @@ export class Entity {
 
     // ── outcomes
     if (this.static >= 1) return 'consumed';
-    if (dist < d.killDistance && (this.observed || this.state === STATE.CHARGE)) return 'caught';
+    if (this.archetype === ARCHETYPE.STALKER) {
+      if (dist < d.killDistance * 0.75) return 'caught';
+    } else if (dist < d.killDistance && (this.observed || this.state === STATE.CHARGE)) {
+      return 'caught';
+    }
     return 'alive';
   }
 
@@ -294,6 +325,19 @@ export class Entity {
   _stalk(dt, player, dist) {
     const d = this.difficulty;
 
+    // A stalker ignores rule 1 entirely: it just keeps coming.
+    if (this.archetype === ARCHETYPE.STALKER) {
+      this._pursue(dt, player, this.chaseSpeed * (1 + this.fragments * 0.06));
+      // It repositions only if it has completely lost you, so it never
+      // teleports into your face mid-chase.
+      this.timer -= dt;
+      if (this.timer <= 0 && dist > 60) {
+        this.timer = this.teleportInterval * 2;
+        this._reposition(player, d.baseDistance);
+      }
+      return;
+    }
+
     // Rule 1: watched means frozen.
     if (this.observed) {
       this.timer -= dt * 0.25; // it still gets impatient, just slower
@@ -309,16 +353,7 @@ export class Entity {
 
     // Creep toward the player, keeping to cover.
     if (dist > d.minDistance) {
-      const speed = d.stalkSpeed * (1 + this.fragments * 0.14);
-      const dir = new THREE.Vector3(
-        player.position.x - this.position.x, 0, player.position.z - this.position.z
-      ).normalize();
-      const next = this.position.clone().addScaledVector(dir, speed * dt);
-      this.forest.resolveCollision(next, 0.6);
-      this.props.resolveCollision(next, 0.6);
-      this.position.x = next.x;
-      this.position.z = next.z;
-      this.position.y = this.terrain.heightAt(this.position.x, this.position.z);
+      this._pursue(dt, player, d.stalkSpeed * (1 + this.fragments * 0.14));
     }
 
     if (this.timer <= 0) {
@@ -331,6 +366,21 @@ export class Entity {
         this._reposition(player);
       }
     }
+  }
+
+  /** Walk toward the player at `speed`, sliding along whatever it hits. */
+  _pursue(dt, player, speed) {
+    const dir = new THREE.Vector3(
+      player.position.x - this.position.x, 0, player.position.z - this.position.z
+    );
+    if (dir.lengthSq() < 1e-6) return;
+    dir.normalize();
+    const next = this.position.clone().addScaledVector(dir, speed * dt);
+    this.forest.resolveCollision(next, 0.6);
+    this.props.resolveCollision(next, 0.6);
+    this.position.x = next.x;
+    this.position.z = next.z;
+    this.position.y = this.terrain.heightAt(this.position.x, this.position.z);
   }
 
   _enterCharge() {
@@ -458,7 +508,8 @@ export class Entity {
     }
 
     // legs: only stride while charging — its stalk is a glide, deliberately
-    const stride = charging ? Math.sin(t * 9) : 0;
+    const moving = charging || (this.archetype === ARCHETYPE.STALKER && this.state !== STATE.DORMANT);
+    const stride = moving ? Math.sin(t * (charging ? 9 : 6.2)) : 0;
     this.legs.forEach((leg, i) => {
       const phase = i === 0 ? stride : -stride;
       leg.rotation.x = damp(leg.rotation.x, phase * 0.7, 12, dt);
@@ -476,5 +527,8 @@ export class Entity {
     this.group.traverse((o) => o.geometry?.dispose?.());
     this.skin.dispose();
     this.cloth.dispose();
+    // Must leave the scene explicitly: with a horde, name-based cleanup would
+    // only ever remove the first one and the rest would pile up between runs.
+    this.group.removeFromParent();
   }
 }

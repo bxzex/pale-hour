@@ -12,7 +12,7 @@ import { Terrain, WORLD_HALF } from '../world/terrain.js';
 import { Forest } from '../world/forest.js';
 import { Props } from '../world/props.js';
 import { Fragments } from '../entities/fragments.js';
-import { Entity, STATE } from '../entities/entity.js';
+import { Entity, STATE, ARCHETYPE } from '../entities/entity.js';
 import { Player } from '../entities/player.js';
 import { PostFX } from '../render/postfx.js';
 import { makeRng, hashSeed, clamp01, damp, lerp } from './rng.js';
@@ -21,6 +21,7 @@ import { rustTexture } from '../world/textures.js';
 import { Sky } from '../world/sky.js';
 import { Grass } from '../world/grass.js';
 import { windUniforms } from '../world/wind.js';
+import { Buildings } from '../world/buildings.js';
 
 /** Ambient light levels at zero fragments; both dim as the run progresses. */
 const MOON_BASE = 1.5;
@@ -119,6 +120,9 @@ export class Game {
     this.forest = new Forest(this.terrain, rng, this.scene);
     this.grass = new Grass(this.terrain, this.forest, seed, this.scene);
     this.props = new Props(this.terrain, this.forest, rng, this.scene);
+    // Buildings register their colliders and anchors into props, so they must
+    // exist before fragments choose where to hang.
+    this.buildings = new Buildings(this.terrain, this.forest, this.props, rng, this.scene);
     this.fragments = new Fragments(
       this.terrain, this.forest, this.props, rng, this.scene, this.difficulty.fragments
     );
@@ -126,18 +130,49 @@ export class Game {
     this.player = new Player(this.camera, this.terrain, this.forest, this.props, this.settings, this.scene);
     this.player.onFootstep = (i, running) => this.audio.footstep(i, running);
     this.player.onLightToggle = (on) => this.audio.flashlight(on);
-    this.player.onViewChange = (name) => {
-      this.audio.ui('select');
-      this.hud.whisper(`VIEW — ${name}`, 1.6);
-    };
 
-    this.entity = new Entity(this.terrain, this.forest, this.props, this.difficulty, rng, this.scene);
-    this.entity.onEvent = (kind, data) => this._onEntityEvent(kind, data);
+    this._buildHorde(rng);
 
     this._buildExit(rng);
 
     const start = this.forest.findOpenSpot(rng, { minRadius: 0, maxRadius: 6, clearance: 2.6 });
     this.player.spawn(start.x, start.z, rng() * Math.PI * 2);
+  }
+
+  /**
+   * The horde. One or two watchers that freeze under your gaze, plus a set of
+   * stalkers that wake one at a time as you collect and simply walk at you.
+   *
+   * `this.entity` stays pointing at the primary watcher — the HUD, the death
+   * stare and the fragment escalation all still read from it.
+   */
+  _buildHorde(rng) {
+    const d = this.difficulty;
+    this.entities = [];
+
+    for (let i = 0; i < (d.watchers ?? 1); i++) {
+      const e = new Entity(this.terrain, this.forest, this.props, d, rng, this.scene, {
+        archetype: ARCHETYPE.WATCHER,
+        activateAt: i === 0 ? 0 : 3,
+        scale: 1 + i * 0.06,
+      });
+      this.entities.push(e);
+    }
+
+    for (let i = 0; i < (d.stalkers ?? 0); i++) {
+      const e = new Entity(this.terrain, this.forest, this.props, d, rng, this.scene, {
+        archetype: ARCHETYPE.STALKER,
+        // Chasers wake one at a time, so the run escalates instead of
+        // dumping four of them on you at once.
+        activateAt: (d.stalkerFrom ?? 2) + i * 2,
+        chaseSpeed: (d.chaseSpeed ?? 3.3) * (0.9 + rng() * 0.25),
+        scale: 0.94 + rng() * 0.2,
+      });
+      this.entities.push(e);
+    }
+
+    for (const e of this.entities) e.onEvent = (kind, data) => this._onEntityEvent(kind, data, e);
+    this.entity = this.entities[0];
   }
 
   /** The way out: a gate in the perimeter fence, dead until the eighth page. */
@@ -209,7 +244,9 @@ export class Game {
     this.build(this.settings.seed);
     this.elapsed = 0;
     this.phase = PHASE.PLAYING;
-    this.entity.begin(this.player);
+    for (const e of this.entities) {
+      if (e.activateAt <= 0) e.begin(this.player);
+    }
     this.postfx.setFade(1);
     this.postfx.fadeTo(0);
     this.hud.show(this.difficulty.fragments);
@@ -275,7 +312,7 @@ export class Game {
 
   /** Snap the camera onto it. Nobody survives the reverse shot. */
   _deathStare() {
-    const e = this.entity;
+    const e = this._killer ?? this.entity;
     const target = new THREE.Vector3(e.position.x, e.position.y + 2.3, e.position.z);
     const from = this.player.eyePosition();
     this.player.yaw = Math.atan2(-(target.x - from.x), -(target.z - from.z));
@@ -334,7 +371,20 @@ export class Game {
     this.player.addShake(0.35);
     this.hud.setFound(n);
     this.hud.fragmentLine(n - 1);
-    this.entity.onFragmentTaken(n, this.player);
+    for (const e of this.entities) {
+      if (e.state === STATE.DORMANT) {
+        if (n >= e.activateAt) {
+          e.begin(this.player);
+          if (e.archetype === ARCHETYPE.STALKER) {
+            this.audio.creature(0.85);
+            this.postfx.glitch(1.1);
+            this.hud.whisper('<i>Something else just started moving.</i>', 4);
+          }
+        }
+      } else {
+        e.onFragmentTaken(n, this.player);
+      }
+    }
 
     // The world tightens with every page: fog closes, moon dims.
     const t = n / this.difficulty.fragments;
@@ -371,9 +421,9 @@ export class Game {
 
     this.audio.update(dt, {
       playing: this.phase === PHASE.PLAYING || this.phase === PHASE.ENDING,
-      staticLevel: this.entity?.static ?? 0,
-      proximity: this.entity?.proximity ?? 0,
-      observed: this.entity?.observed ?? false,
+      staticLevel: this._hordeStatic ?? 0,
+      proximity: this._hordeProximity ?? 0,
+      observed: this.entities?.some((e) => e.observed) ?? false,
       speed: this.player?.speed ?? 0,
       stamina: this.player?.stamina ?? 1,
       sprinting: this.player?.sprinting ?? false,
@@ -395,7 +445,27 @@ export class Game {
     if (this.input.hit('use')) this._tryPickup();
 
     this.fragments.update(dt, this.player);
-    const result = this.entity.update(dt, this.player, this.camera);
+
+    // Run every entity; the worst outcome any of them produces ends the run,
+    // and the HUD reads the highest static and dread across all of them.
+    let result = 'alive';
+    let worstStatic = 0, worstProx = 0;
+    for (const e of this.entities) {
+      if (e.state === STATE.DORMANT) continue;
+      const r = e.update(dt, this.player, this.camera);
+      if (r !== 'alive') { result = r; this._killer = e; }
+      if (e.static > worstStatic) worstStatic = e.static;
+      if (e.proximity > worstProx) worstProx = e.proximity;
+    }
+    this._hordeStatic = worstStatic;
+    this._hordeProximity = worstProx;
+
+    // A chaser inside this radius is the cue to stop searching and move.
+    this._chaseNear = this.entities.some(
+      (e) => e.archetype === ARCHETYPE.STALKER
+        && e.state !== STATE.DORMANT
+        && e.position.distanceTo(this.player.position) < 16
+    );
 
     this._updateExit(dt);
     this._updateAtmosphere(dt);
@@ -415,13 +485,14 @@ export class Game {
   _stepEnding(dt) {
     // Keep the world simulating so the death shot has motion in it.
     this.player._applyCamera(dt);
-    if (this._staring && this.entity) {
-      this.entity._face(this.player, dt);
-      this.entity._animate(dt, 3);
-      this.entity.static = Math.min(1, this.entity.static + dt * 0.8);
+    const killer = this._killer ?? this.entity;
+    if (this._staring && killer) {
+      killer._face(this.player, dt);
+      killer._animate(dt, 3);
+      killer.static = Math.min(1, killer.static + dt * 0.8);
     }
     this.postfx.update(dt, {
-      staticLevel: Math.min(1, (this.entity?.static ?? 0) + 0.35),
+      staticLevel: Math.min(1, (killer?.static ?? 0) + 0.35),
       proximity: 1,
     });
   }
@@ -441,15 +512,15 @@ export class Game {
       this.fog.density = damp(this.fog.density, this._fogTarget, 0.7, dt);
     }
     // Fog thickens further while it is looking at you — the world narrows.
-    const squeeze = this.entity.static * 0.03 + this.entity.proximity * 0.012;
+    const squeeze = this._hordeStatic * 0.03 + this._hordeProximity * 0.012;
     this.fog.density = Math.max(this.fog.density, (this._fogTarget ?? 0.020) + squeeze);
 
     this.postfx.update(dt, {
-      staticLevel: this.entity.static,
-      proximity: this.entity.proximity,
+      staticLevel: this._hordeStatic,
+      proximity: this._hordeProximity,
     });
 
-    if (this.entity.proximity > 0.55) this.player.addShake(dt * this.entity.proximity * 0.9);
+    if (this._hordeProximity > 0.55) this.player.addShake(dt * this._hordeProximity * 0.9);
   }
 
   _updateHud() {
@@ -470,7 +541,9 @@ export class Game {
       hint = `THE GATE — ${Math.round(d)}M ${this._bearingTo(this.exit.position)}`;
     } else if (this.player.battery < 0.2) {
       hint = 'BATTERY FAILING — <b>[F]</b> TO SAVE IT';
-    } else if (this.entity.state === STATE.CHARGE) {
+    } else if (this._chaseNear) {
+      hint = '<b>RUN</b>';
+    } else if (this.entities.some((e) => e.state === STATE.CHARGE)) {
       hint = '<b>RUN</b>';
     } else if (this.fragments.found === 0 && this.elapsed < 30) {
       hint = 'SWEEP YOUR LIGHT ACROSS THE TREES';
@@ -532,23 +605,24 @@ export class Game {
     this.moon.intensity = MOON_BASE;
     this.skyLight.intensity = SKY_BASE;
 
-    for (const part of [this.fragments, this.entity, this.props, this.forest, this.grass, this.skyDome]) part?.dispose?.();
+    for (const e of this.entities ?? []) e.dispose?.();
+    for (const part of [this.fragments, this.props, this.forest, this.grass, this.skyDome, this.buildings]) part?.dispose?.();
     if (this.terrain) { this.scene.remove(this.terrain.mesh); this.terrain.dispose(); }
-    for (const name of ['forest', 'props', 'fragments', 'entity']) {
+    for (const name of ['forest', 'props', 'fragments', 'entity', 'buildings']) {
       const obj = this.scene.getObjectByName(name);
       if (obj) this.scene.remove(obj);
     }
     if (this.exit) this.scene.remove(this.exit.group);
     if (this.player) {
       this.player.rig?.removeFromParent();
-      this.player.body?.removeFromParent();
     }
     for (const name of ['sky', 'grass', 'motes']) {
       const obj = this.scene.getObjectByName(name);
       if (obj) this.scene.remove(obj);
     }
     this.terrain = this.forest = this.props = this.fragments = this.entity = this.player = null;
-    this.grass = this.skyDome = null;
+    this.grass = this.skyDome = this.buildings = this._killer = null;
+    this.entities = [];
     this.exit = null;
 
     if (full) {
