@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { WORLD_HALF } from './terrain.js';
 import { barkTexture, barkNormal, foliageTexture } from './textures.js';
+import { applyWind } from './wind.js';
 
 const CELL = 8; // spatial-grid cell size, metres
 
@@ -127,6 +128,8 @@ export class Forest {
       metalness: 0,
       flatShading: true,
     });
+    // Canopies are heavy and high up: stiff, but they do move.
+    applyWind(canopyMat, { amount: 0.09, stiffness: 2.6 });
 
     // Count instances up front — InstancedMesh needs a fixed capacity.
     let branchCount = 0, canopyCount = 0;
@@ -243,6 +246,7 @@ export class Forest {
       metalness: 0,
       color: 0xc8cfb4,
     });
+    applyWind(mat, { amount: 0.26, stiffness: 1.3 });
 
     const mesh = new THREE.InstancedMesh(cross, mat, count);
     mesh.frustumCulled = false;

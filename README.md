@@ -29,6 +29,9 @@ It runs entirely in the browser on WebGL2, and **it ships with no asset files at
 | **There is an exit** | After the eighth fragment the gate at the treeline lights up and you have to actually reach it. The run ends in a chase, not a fade-out. |
 | **Resources that matter** | A torch battery that visibly dies, and breath that limits sprinting. Killing the light hides you — and hides the pages too. |
 | **A real camcorder lens** | Barrel distortion, chroma bleed, tracking slip, dropout lines, interlace shimmer and a static storm, all in one shader pass. |
+| **Three camera modes** | First person, over-the-shoulder third person with a visible body, and a wide boom. The torch stays on the player's head in every mode, and the boom shortens automatically rather than clipping through trees. |
+| **A world that moves** | 26,000 wind-animated grass tufts, swaying canopies and undergrowth on a shared gust front, dust motes drifting through the torch beam, 2,600 twinkling stars and a cratered moon. |
+| **Sound that tracks your body** | Breathing that speeds up and turns ragged as you burn through stamina, a two-transient flashlight click, footsteps timed by distance travelled, a dread-driven score that adds voices as it builds, and the entity's own inharmonic vocalisations. |
 
 ## Controls
 
@@ -39,6 +42,7 @@ It runs entirely in the browser on WebGL2, and **it ships with no asset files at
 | `Ctrl` / `C` | Crouch — slow, quiet, small |
 | `F` | Toggle flashlight |
 | `E` / `Space` | Take fragment |
+| `V` | Cycle camera — first person → third person → wide |
 | `Esc` | Pause |
 
 Mouse look uses pointer lock. If your browser refuses pointer lock, the game falls back to click-and-drag looking and tells you so.
@@ -94,6 +98,9 @@ src/
 │   └── rng.js           seeded RNG, value noise, fbm, easing
 ├── world/
 │   ├── textures.js      every texture in the game, drawn to canvas
+│   ├── sky.js           stars, the moon and its haze
+│   ├── grass.js         instanced grass tufts and drifting motes
+│   ├── wind.js          one shared wind, patched into any material
 │   ├── terrain.js       heightfield + the shared height function
 │   ├── forest.js        instanced trees, collision, line of sight
 │   └── props.js         chapel, silo, walls, truck, graves, fences

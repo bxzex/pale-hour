@@ -48,6 +48,8 @@ export class AudioEngine {
     this._buildWind();
     this._buildDrone();
     this._buildStatic();
+    this._buildBreath();
+    this._buildMusic();
     this.ready = true;
   }
 
@@ -218,6 +220,27 @@ export class AudioEngine {
       this._whisperAt = now;
       this.whisper(s.proximity);
     }
+
+    // ── breathing: rate and harshness follow exertion and fear
+    const effort = Math.max(1 - (s.stamina ?? 1), s.proximity * 0.55);
+    const rate = 3.4 - effort * 2.0;              // seconds per full breath
+    this._breathAt ??= 0;
+    this._breathPhase ??= 0;
+    if (now - this._breathAt > rate * 0.5) {
+      this._breathAt = now;
+      this._breathPhase = 1 - this._breathPhase;
+      // Always audible when winded; only faintly present when calm.
+      if (effort > 0.12 || s.sprinting) this.breath(this._breathPhase === 1, effort);
+    }
+
+    // ── the thing's own voice, when it is close and unseen
+    this._creatureAt ??= 0;
+    if (s.proximity > 0.35 && !s.observed && now - this._creatureAt > 6 + Math.random() * 8) {
+      this._creatureAt = now;
+      this.creature(s.proximity);
+    }
+
+    this.setMusic(s.proximity, dt);
   }
 
   /* ── one-shots ──────────────────────────────────────────────── */
@@ -463,6 +486,203 @@ export class AudioEngine {
     osc.connect(g).connect(this.master);
     osc.start(t);
     osc.stop(t + 0.2);
+  }
+
+
+  /* ── new one-shots ──────────────────────────────────────────── */
+
+  /**
+   * Flashlight switch. A real torch click is two transients: the plastic snap
+   * of the slider and the duller thunk of the contact closing.
+   */
+  flashlight(on) {
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+
+    const click = (at, freq, gain, dur) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(freq, at);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.35, at + dur);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(gain, at);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 700;
+      osc.connect(hp).connect(g).connect(this.master);
+      osc.start(at); osc.stop(at + dur + 0.02);
+    };
+
+    // switching on is a brighter, tighter click than switching off
+    click(t, on ? 2600 : 1900, 0.16, 0.02);
+    click(t + 0.028, on ? 900 : 720, 0.1, 0.035);
+
+    // the filament/LED settling
+    if (on) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1400, t + 0.03);
+      osc.frequency.exponentialRampToValueAtTime(320, t + 0.16);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.03, t + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+      osc.connect(g).connect(this.master);
+      osc.start(t + 0.03); osc.stop(t + 0.2);
+    }
+  }
+
+  /**
+   * Breathing. Driven continuously from update(): the rate and harshness track
+   * exertion, so sprinting audibly costs you and recovery is audible too.
+   */
+  _buildBreath() {
+    const ctx = this.ctx;
+    this.breathGain = ctx.createGain();
+    this.breathGain.gain.value = 0;
+    this.breathGain.connect(this.master);
+  }
+
+  breath(inhale, effort) {
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const src = this._noiseSource(false);
+    src.playbackRate.value = inhale ? 0.85 : 0.6;
+
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = inhale ? 1.6 : 1.1;
+    // inhale sweeps up, exhale sweeps down — the shape of the whole breath
+    const f0 = inhale ? 420 : 700;
+    const f1 = inhale ? 900 : 300;
+    const dur = inhale ? 0.34 : 0.46;
+    bp.frequency.setValueAtTime(f0, t);
+    bp.frequency.exponentialRampToValueAtTime(f1, t + dur);
+
+    const g = ctx.createGain();
+    const peak = (0.035 + effort * 0.13) * (inhale ? 1 : 0.8);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + dur * 0.3);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+    // a rasp that only appears when genuinely winded
+    if (effort > 0.55) {
+      const rasp = ctx.createBiquadFilter();
+      rasp.type = 'peaking';
+      rasp.frequency.value = 1800;
+      rasp.gain.value = 10 * effort;
+      rasp.Q.value = 2;
+      src.connect(rasp).connect(bp);
+    } else {
+      src.connect(bp);
+    }
+    bp.connect(g).connect(this.master);
+    src.start(t); src.stop(t + dur + 0.05);
+  }
+
+  /**
+   * The entity's voice. Not a roar — a wet, sub-audible exhalation with
+   * inharmonic partials, so it never sounds like an animal.
+   */
+  creature(intensity = 0.5) {
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const dur = 1.4 + intensity * 1.2;
+
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0, t);
+    out.gain.linearRampToValueAtTime(0.1 + intensity * 0.22, t + 0.3);
+    out.gain.linearRampToValueAtTime(0, t + dur);
+    out.connect(this.master);
+
+    // inharmonic partials: ratios chosen to never form a chord
+    [1, 2.41, 3.83, 5.17].forEach((mult, i) => {
+      const osc = ctx.createOscillator();
+      osc.type = i === 0 ? 'sine' : 'triangle';
+      const base = 44 + intensity * 22;
+      osc.frequency.setValueAtTime(base * mult, t);
+      osc.frequency.linearRampToValueAtTime(base * mult * 0.72, t + dur);
+      const g = ctx.createGain();
+      g.gain.value = 0.5 / (i + 1);
+      // slow amplitude wobble = something breathing, badly
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.7 + i * 0.31;
+      const lg = ctx.createGain();
+      lg.gain.value = 0.3 / (i + 1);
+      lfo.connect(lg).connect(g.gain);
+      lfo.start(t); lfo.stop(t + dur);
+      osc.connect(g).connect(out);
+      osc.start(t); osc.stop(t + dur);
+    });
+
+    // breath noise over the top
+    const src = this._noiseSource(false);
+    src.playbackRate.value = 0.4;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(300, t);
+    bp.frequency.linearRampToValueAtTime(120, t + dur);
+    bp.Q.value = 1.4;
+    const ng = ctx.createGain();
+    ng.gain.value = 0.5;
+    src.connect(bp).connect(ng).connect(out);
+    src.start(t); src.stop(t + dur);
+  }
+
+  /**
+   * Music: a single slow cello-ish drone that fades in with dread and swells
+   * on a rising minor line. Deliberately sparse — constant scoring kills the
+   * silence that the forest needs.
+   */
+  _buildMusic() {
+    const ctx = this.ctx;
+    this.musicGain = ctx.createGain();
+    this.musicGain.gain.value = 0;
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 900;
+    lp.Q.value = 0.7;
+    this.musicFilter = lp;
+
+    // D, F, A-flat, C — a half-diminished stack that never resolves
+    this.musicVoices = [73.4, 87.3, 103.8, 130.8].map((f, i) => {
+      const osc = ctx.createOscillator();
+      osc.type = i < 2 ? 'sawtooth' : 'triangle';
+      osc.frequency.value = f;
+      const g = ctx.createGain();
+      g.gain.value = 0;
+
+      // bow-like tremolo
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 4.1 + i * 0.7;
+      const la = ctx.createGain();
+      la.gain.value = 0.13;
+      lfo.connect(la).connect(g.gain);
+      lfo.start();
+
+      osc.connect(g).connect(lp);
+      osc.start();
+      return { osc, gain: g, base: 0.14 / (i + 1) };
+    });
+
+    lp.connect(this.musicGain).connect(this.master);
+  }
+
+  /** Swell the score. `level` 0..1, usually the dread value. */
+  setMusic(level, dt) {
+    if (!this.ready || !this.musicVoices) return;
+    const now = this.ctx.currentTime;
+    this.musicGain.gain.setTargetAtTime(level * 0.5, now, 1.4);
+    this.musicFilter.frequency.setTargetAtTime(500 + level * 1800, now, 1.2);
+    // Voices enter one at a time as dread climbs, so it builds rather than
+    // simply getting louder.
+    this.musicVoices.forEach((v, i) => {
+      const enters = i * 0.24;
+      const amt = Math.max(0, Math.min(1, (level - enters) / 0.3));
+      v.gain.gain.setTargetAtTime(amt * v.base, now, 1.1);
+    });
+    void dt;
   }
 
   suspend() {

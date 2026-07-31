@@ -18,6 +18,9 @@ import { PostFX } from '../render/postfx.js';
 import { makeRng, hashSeed, clamp01, damp, lerp } from './rng.js';
 import { difficultyOf } from './settings.js';
 import { rustTexture } from '../world/textures.js';
+import { Sky } from '../world/sky.js';
+import { Grass } from '../world/grass.js';
+import { windUniforms } from '../world/wind.js';
 
 /** Ambient light levels at zero fragments; both dim as the run progresses. */
 const MOON_BASE = 1.5;
@@ -90,8 +93,8 @@ export class Game {
     this.moon.position.set(-60, 90, 40);
     this.scene.add(this.moon);
 
-    this.sky = new THREE.HemisphereLight(0x2c3a52, 0x0a0b09, SKY_BASE);
-    this.scene.add(this.sky);
+    this.skyLight = new THREE.HemisphereLight(0x2c3a52, 0x0a0b09, SKY_BASE);
+    this.scene.add(this.skyLight);
 
     this.postfx = new PostFX(this.renderer, this.scene, this.camera, this.settings);
     this._onResize();
@@ -112,14 +115,21 @@ export class Game {
     this.terrain = new Terrain(seed);
     this.scene.add(this.terrain.mesh);
 
+    this.skyDome = new Sky(seed, this.scene);
     this.forest = new Forest(this.terrain, rng, this.scene);
+    this.grass = new Grass(this.terrain, this.forest, seed, this.scene);
     this.props = new Props(this.terrain, this.forest, rng, this.scene);
     this.fragments = new Fragments(
       this.terrain, this.forest, this.props, rng, this.scene, this.difficulty.fragments
     );
 
-    this.player = new Player(this.camera, this.terrain, this.forest, this.props, this.settings);
+    this.player = new Player(this.camera, this.terrain, this.forest, this.props, this.settings, this.scene);
     this.player.onFootstep = (i, running) => this.audio.footstep(i, running);
+    this.player.onLightToggle = (on) => this.audio.flashlight(on);
+    this.player.onViewChange = (name) => {
+      this.audio.ui('select');
+      this.hud.whisper(`VIEW — ${name}`, 1.6);
+    };
 
     this.entity = new Entity(this.terrain, this.forest, this.props, this.difficulty, rng, this.scene);
     this.entity.onEvent = (kind, data) => this._onEntityEvent(kind, data);
@@ -330,7 +340,8 @@ export class Game {
     const t = n / this.difficulty.fragments;
     this._fogTarget = lerp(0.020, 0.050, t);
     this.moon.intensity = lerp(MOON_BASE, MOON_BASE * 0.34, t);
-    this.sky.intensity = lerp(SKY_BASE, SKY_BASE * 0.36, t);
+    this.skyLight.intensity = lerp(SKY_BASE, SKY_BASE * 0.36, t);
+    this.skyDome.setDim(t);
 
     if (n >= this.difficulty.fragments) this._openExit();
   }
@@ -364,6 +375,8 @@ export class Game {
       proximity: this.entity?.proximity ?? 0,
       observed: this.entity?.observed ?? false,
       speed: this.player?.speed ?? 0,
+      stamina: this.player?.stamina ?? 1,
+      sprinting: this.player?.sprinting ?? false,
     });
 
     this.postfx.render();
@@ -372,6 +385,10 @@ export class Game {
 
   _step(dt) {
     this.elapsed += dt;
+    this._worldTime = (this._worldTime ?? 0) + dt;
+    windUniforms.uWindTime.value = this._worldTime;
+    this.skyDome.update(dt, this.camera);
+    this.grass.update(dt, this._worldTime);
 
     this.player.update(dt, this.input, this.difficulty);
 
@@ -513,9 +530,9 @@ export class Game {
     this._fogTarget = 0.020;
     this.fog.density = 0.020;
     this.moon.intensity = MOON_BASE;
-    this.sky.intensity = SKY_BASE;
+    this.skyLight.intensity = SKY_BASE;
 
-    for (const part of [this.fragments, this.entity, this.props, this.forest]) part?.dispose?.();
+    for (const part of [this.fragments, this.entity, this.props, this.forest, this.grass, this.skyDome]) part?.dispose?.();
     if (this.terrain) { this.scene.remove(this.terrain.mesh); this.terrain.dispose(); }
     for (const name of ['forest', 'props', 'fragments', 'entity']) {
       const obj = this.scene.getObjectByName(name);
@@ -523,9 +540,15 @@ export class Game {
     }
     if (this.exit) this.scene.remove(this.exit.group);
     if (this.player) {
-      this.camera.remove(this.player.torch, this.player.torchWide, this.player.held);
+      this.player.rig?.removeFromParent();
+      this.player.body?.removeFromParent();
+    }
+    for (const name of ['sky', 'grass', 'motes']) {
+      const obj = this.scene.getObjectByName(name);
+      if (obj) this.scene.remove(obj);
     }
     this.terrain = this.forest = this.props = this.fragments = this.entity = this.player = null;
+    this.grass = this.skyDome = null;
     this.exit = null;
 
     if (full) {

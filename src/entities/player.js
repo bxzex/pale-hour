@@ -25,9 +25,17 @@ const TORCH_CORE = 460;
 const TORCH_SPILL = 120;
 const TORCH_HELD = 7;
 
+/** Camera modes, cycled with V. */
+export const VIEW = { FIRST: 0, THIRD: 1, FAR: 2 };
+const VIEW_NAMES = ['FIRST PERSON', 'THIRD PERSON', 'WIDE'];
+/** [distance behind, height above eye] per mode. */
+const VIEW_RIG = [[0, 0], [2.6, 0.28], [5.2, 0.75]];
+
 export class Player {
-  constructor(camera, terrain, forest, props, settings) {
+  constructor(camera, terrain, forest, props, settings, scene) {
     this.camera = camera;
+    this.scene = scene;
+    this.viewMode = VIEW.FIRST;
     this.terrain = terrain;
     this.forest = forest;
     this.props = props;
@@ -52,6 +60,7 @@ export class Player {
     this._shake = 0;
     this._lightFlicker = 1;
     this._roll = 0;
+    this._camPos = new THREE.Vector3();
 
     /** @type {(intensity:number, running:boolean)=>void} */
     this.onFootstep = null;
@@ -75,17 +84,76 @@ export class Player {
     this.torch.shadow.bias = -0.0016;
     this.torch.shadow.normalBias = 0.03;
 
-    // Parent to the camera so they follow view direction exactly.
+    // The torch hangs off a rig at the player's head rather than off the
+    // camera, so in third person the beam still comes out of the body instead
+    // of out of a point floating behind it.
+    this.rig = new THREE.Object3D();
+    this.rig.rotation.order = 'YXZ';
+    this.scene.add(this.rig);
+
     this.torch.position.set(0.16, -0.14, 0.1);
     this.torchWide.position.copy(this.torch.position);
     this.torch.target.position.set(0.16, -0.14, -1);
     this.torchWide.target.position.copy(this.torch.target.position);
-    this.camera.add(this.torch, this.torch.target, this.torchWide, this.torchWide.target);
+    this.rig.add(this.torch, this.torch.target, this.torchWide, this.torchWide.target);
 
     // A whisper of bounce so you are never rendering pure black pixels.
     this.held = new THREE.PointLight(0xffd9a8, TORCH_HELD, 5, 2);
     this.held.position.set(0.2, -0.3, 0);
-    this.camera.add(this.held);
+    this.rig.add(this.held);
+
+    this._buildBody();
+  }
+
+  /**
+   * The visible body, seen only in third person. Deliberately plain: a hiker in
+   * a dark coat, so the eye stays on the forest rather than on the avatar.
+   */
+  _buildBody() {
+    const coat = new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.92 });
+    const skin = new THREE.MeshStandardMaterial({ color: 0x8a6f5c, roughness: 0.85 });
+    const jeans = new THREE.MeshStandardMaterial({ color: 0x24282f, roughness: 0.95 });
+
+    const g = new THREE.Group();
+    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.21, 0.5, 4, 10), coat);
+    torso.position.y = 1.16;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.125, 14, 12), skin);
+    head.scale.set(1, 1.18, 1);
+    head.position.y = 1.62;
+    const hood = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10, 0, 6.3, 0, 1.9), coat);
+    hood.position.y = 1.63;
+
+    this.bodyArms = [];
+    this.bodyLegs = [];
+    for (const side of [-1, 1]) {
+      const arm = new THREE.Group();
+      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.058, 0.46, 3, 8), coat);
+      upper.position.y = -0.26;
+      arm.add(upper);
+      arm.position.set(side * 0.245, 1.42, 0);
+      this.bodyArms.push(arm);
+
+      const leg = new THREE.Group();
+      const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.075, 0.62, 3, 8), jeans);
+      thigh.position.y = -0.36;
+      leg.add(thigh);
+      leg.position.set(side * 0.105, 0.86, 0);
+      this.bodyLegs.push(leg);
+
+      g.add(arm, leg);
+    }
+    g.add(torso, head, hood);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    g.visible = false;
+
+    this.body = g;
+    this.scene.add(g);
+  }
+
+  /** Cycle first → third → wide. Returns the new mode's label. */
+  cycleView() {
+    this.viewMode = (this.viewMode + 1) % 3;
+    return VIEW_NAMES[this.viewMode];
   }
 
   spawn(x, z, yaw = 0) {
@@ -115,6 +183,7 @@ export class Player {
   }
 
   update(dt, input, difficulty) {
+    if (input.hit('view')) this.onViewChange?.(this.cycleView());
     this._look(input);
     this._move(dt, input);
     this._torch(dt, input, difficulty);
@@ -162,10 +231,12 @@ export class Player {
     if (iz > 0) target *= 0.72;             // backpedalling is slower
     if (this.stamina < 0.14 && !this.crouching) target *= 0.72 + this.stamina; // winded
 
-    // world-space desired velocity
+    // World-space desired velocity, built from the same basis as forward():
+    //   forward = (-sin(yaw), 0, -cos(yaw))    right = (cos(yaw), 0, -sin(yaw))
+    // iz is -1 for W, so the forward term carries iz's sign directly.
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
-    const wx = (ix * cos - iz * sin) * target;
-    const wz = (-ix * sin - iz * cos) * target;
+    const wx = (ix * cos + iz * sin) * target;
+    const wz = (-ix * sin + iz * cos) * target;
 
     const accel = moving ? 13 : 17;
     this.velocity.x = damp(this.velocity.x, wx, accel, dt);
@@ -198,7 +269,13 @@ export class Player {
   }
 
   _torch(dt, input, difficulty) {
-    if (input.hit('light')) this.lightOn = !this.lightOn && this.battery > 0.001;
+    if (input.hit('light')) {
+      const was = this.lightOn;
+      this.lightOn = !this.lightOn && this.battery > 0.001;
+      // Fires even when a dead battery refuses to light: you still hear the
+      // switch, which is how you learn the battery is gone.
+      if (was !== this.lightOn || !this.lightOn) this.onLightToggle?.(this.lightOn);
+    }
 
     if (this.lightOn && this.battery > 0) {
       this.battery = clamp01(this.battery - dt * difficulty.batteryDrain);
@@ -240,14 +317,82 @@ export class Player {
     const sx = (Math.random() - 0.5) * sh * 0.09;
     const sy = (Math.random() - 0.5) * sh * 0.09;
 
-    this.camera.position.set(
+    // ── the eye: where the player actually looks from, in every mode
+    this._camPos.set(
       this.position.x + bobX * Math.cos(this.yaw),
       this.position.y + this.eye + bobY,
       this.position.z - bobX * Math.sin(this.yaw)
     );
-    this.camera.rotation.set(this.pitch + sy, this.yaw + sx, this._roll, 'YXZ');
-    // rotation order must be applied as YXZ; set order explicitly after Euler set
+
+    // The torch rig always sits at the eye and aims along the look direction,
+    // independent of where the camera ends up.
+    this.rig.position.copy(this._camPos);
+    this.rig.rotation.set(this.pitch, this.yaw, 0);
+
+    const [back, lift] = VIEW_RIG[this.viewMode];
+    if (back > 0) {
+      // Pull the camera back along the inverse look vector, then shorten the
+      // boom until it is clear of trees and walls so it never ends up inside
+      // a trunk looking at the inside of the bark.
+      const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
+      const dirX = Math.sin(this.yaw) * cp;
+      const dirY = -sp;
+      const dirZ = Math.cos(this.yaw) * cp;
+
+      let dist = back;
+      const probe = new THREE.Vector3();
+      for (let i = 0; i < 6; i++) {
+        probe.set(
+          this._camPos.x + dirX * dist,
+          0,
+          this._camPos.z + dirZ * dist
+        );
+        const before = probe.clone();
+        this.forest.resolveCollision(probe, 0.34);
+        this.props.resolveCollision(probe, 0.34);
+        if (probe.distanceToSquared(before) < 0.002) break;
+        dist *= 0.68;
+      }
+
+      const camY = this._camPos.y + dirY * dist + lift;
+      const groundY = this.terrain.heightAt(
+        this._camPos.x + dirX * dist,
+        this._camPos.z + dirZ * dist
+      ) + 0.4;
+
+      this.camera.position.set(
+        this._camPos.x + dirX * dist,
+        Math.max(camY, groundY),
+        this._camPos.z + dirZ * dist
+      );
+    } else {
+      this.camera.position.copy(this._camPos);
+    }
+
     this.camera.rotation.order = 'YXZ';
+    this.camera.rotation.set(this.pitch + sy, this.yaw + sx, this._roll);
+
+    this._updateBody(dt);
+  }
+
+  /** Pose the visible body — only ever seen in third person. */
+  _updateBody(dt) {
+    const show = this.viewMode !== VIEW.FIRST;
+    this.body.visible = show;
+    if (!show) return;
+
+    this.body.position.set(this.position.x, this.position.y, this.position.z);
+    this.body.rotation.y = this.yaw;
+    this.body.scale.y = this.crouching ? 0.72 : 1;
+
+    // Walk cycle driven by distance travelled, so it never slides.
+    const swing = Math.sin(this.walkDistance * 2.6) * Math.min(1, this.speed / SPEED_WALK);
+    this.bodyLegs.forEach((leg, i) => {
+      leg.rotation.x = damp(leg.rotation.x, (i ? -swing : swing) * 0.62, 14, dt);
+    });
+    this.bodyArms.forEach((arm, i) => {
+      arm.rotation.x = damp(arm.rotation.x, (i ? swing : -swing) * 0.5, 14, dt);
+    });
   }
 
   get radius() { return RADIUS; }
