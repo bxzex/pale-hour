@@ -155,7 +155,9 @@ export class PostFX {
     // A restrained bloom: just enough that the torch reads as a light source
     // in fog rather than a painted cone.
     const size = renderer.getSize(new THREE.Vector2());
-    this.bloom = new UnrealBloomPass(size, 0.34, 0.72, 0.74);
+    // Threshold sits high and strength low on purpose: bloom is here to say
+    // "that is a light source", not to smear the torch across the frame.
+    this.bloom = new UnrealBloomPass(size, 0.12, 0.5, 0.95);
     this.composer.addPass(this.bloom);
 
     this.vhs = new ShaderPass(VhsShader);
@@ -202,7 +204,7 @@ export class PostFX {
     u.uFade.value = this._fade;
 
     // bloom breathes with dread — the world gets soft and wrong up close
-    this.bloom.strength = 0.34 + proximity * 0.5 + staticLevel * 0.3;
+    this.bloom.strength = 0.12 + proximity * 0.14 + staticLevel * 0.1;
   }
 
   setSize(width, height) {

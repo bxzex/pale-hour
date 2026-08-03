@@ -37,11 +37,19 @@ function boot() {
     onEnd: (outcome, stats) => menu.showEnd(outcome, stats),
   });
 
+  let introSeen = false;
+
   const menu = new Menu(settings, {
     onBootDone: () => audio.init(),
 
     onPlay: async () => {
       await audio.init();
+      // The intro plays once per session: enough to set up who you are without
+      // making it a wall between you and a retry.
+      if (!introSeen) {
+        introSeen = true;
+        await hud.playIntro();
+      }
       game.start();
     },
 
@@ -65,6 +73,9 @@ function boot() {
     },
 
     onSound: (kind) => audio.ui(kind),
+
+    isReaderOpen: () => hud.readerOpen,
+    onCloseReader: () => game.closeNote(),
   });
 
   // Pointer-lock loss (alt-tab, Esc from the browser) drops straight to pause.

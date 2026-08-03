@@ -2,22 +2,7 @@
 
 const $ = (id) => document.getElementById(id);
 
-const OPENING = [
-  'You were told not to come back after dark.',
-  'Eight pages. Then the road out.',
-];
-
-/** One line fires the first time each fragment is taken. */
-const ON_FRAGMENT = [
-  'One. The trees look further apart than they did.',
-  'Two. Something moved that was not the wind.',
-  'Three. Your torch is warm now.',
-  'Four. It is not hiding any more. It is <i>waiting</i>.',
-  'Five. Stop looking behind you. Stop it.',
-  'Six. You can hear the tape running out.',
-  'Seven. Do not look up.',
-  'Eight. Get to the treeline. <i>Run.</i>',
-];
+import { FRAGMENT_LINES, INTRO } from '../story.js';
 
 export class Hud {
   constructor() {
@@ -28,6 +13,7 @@ export class Hud {
     this.battery = $('hud-battery');
     this.stamina = $('hud-stamina');
     this.hint = $('hud-hint');
+    this.notesEl = $('hud-notes');
     this.whisperEl = $('whisper');
     this.fragBox = document.querySelector('.frag');
     this.batteryMeter = this.battery.closest('.meter');
@@ -98,13 +84,86 @@ export class Hud {
   }
 
   opening() {
-    this.whisper(OPENING[0], 4.5);
-    this._whisperQueue = setTimeout(() => this.whisper(OPENING[1], 4.5), 5200);
+    this.whisper('Find the eight. Get to the gate. <i>Do not stop to look at it.</i>', 5.5);
   }
 
   fragmentLine(index) {
-    const line = ON_FRAGMENT[index];
-    if (line) this.whisper(line, 4.6);
+    const line = FRAGMENT_LINES[index];
+    if (line) this.whisper(line, 5.4);
+  }
+
+  setNotes(read, total) {
+    this.notesEl.innerHTML = read > 0 ? `NOTES <b>${read}/${total}</b>` : '';
+  }
+
+  /* ── the note reader ──────────────────────────────────────── */
+
+  /** Opens the document overlay. Returns nothing; the game pauses the world. */
+  showNote(note, read, total) {
+    $('reader-title').textContent = note.title;
+    $('reader-body').innerHTML = note.body.map((para) => `<p>${para}</p>`).join('');
+    $('reader-count').textContent = `NOTE ${read} OF ${total}`;
+    $('reader').hidden = false;
+  }
+
+  hideNote() {
+    $('reader').hidden = true;
+  }
+
+  get readerOpen() {
+    return !$('reader').hidden;
+  }
+
+  /* ── intro cards ──────────────────────────────────────────── */
+
+  /** Steps through the intro, resolving when the player has read it all. */
+  playIntro() {
+    return new Promise((resolve) => {
+      const screen = $('intro');
+      const kicker = $('intro-kicker');
+      const body = $('intro-body');
+      const next = $('intro-next');
+      const dots = $('intro-dots');
+      let i = 0;
+
+      dots.innerHTML = INTRO.map(() => '<i></i>').join('');
+      screen.hidden = false;
+
+      const render = () => {
+        const card = INTRO[i];
+        kicker.textContent = card.kicker;
+        body.innerHTML = card.body;
+        [...dots.children].forEach((d, n) => d.classList.toggle('on', n <= i));
+        next.textContent = i === INTRO.length - 1 ? 'GO IN ▸' : 'CONTINUE ▸';
+        // replay the entrance animation on each card
+        body.style.animation = 'none';
+        void body.offsetWidth;
+        body.style.animation = 'menuin 0.45s ease-out both';
+      };
+
+      const advance = () => {
+        i++;
+        if (i >= INTRO.length) {
+          screen.hidden = true;
+          next.removeEventListener('click', advance);
+          removeEventListener('keydown', onKey);
+          resolve();
+        } else {
+          render();
+        }
+      };
+      const onKey = (e) => {
+        if (e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyE') {
+          e.preventDefault();
+          advance();
+        }
+      };
+
+      next.addEventListener('click', advance);
+      addEventListener('keydown', onKey);
+      render();
+      next.focus({ preventScroll: true });
+    });
   }
 
   flashDamage() {

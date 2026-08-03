@@ -26,6 +26,7 @@
           <span class="frag__n" id="hud-found">0</span><span class="frag__slash">/</span><span class="frag__t" id="hud-total">8</span>
         </div>
         <div class="frag__label">FRAGMENTS</div>
+        <div class="notes" id="hud-notes"></div>
       </div>
 
       <div class="hud__botleft">
@@ -255,6 +256,32 @@
           <button class="mbtn mbtn--primary" data-act="retry"><span class="mbtn__label">RUN AGAIN</span></button>
           <button class="mbtn" data-act="quit"><span class="mbtn__label">MAIN MENU</span></button>
         </div>
+      </div>
+    </div>
+
+    <!-- ═══ NOTE READER ═══ -->
+    <div id="reader" class="screen screen--reader" hidden>
+      <div class="noise"></div>
+      <article class="doc">
+        <div class="doc__edge"></div>
+        <h2 class="doc__title" id="reader-title"></h2>
+        <div class="doc__body" id="reader-body"></div>
+        <footer class="doc__foot">
+          <span id="reader-count"></span>
+          <button class="xbtn" data-act="close-reader">CLOSE &nbsp;[E]</button>
+        </footer>
+      </article>
+    </div>
+
+    <!-- ═══ INTRO CARDS ═══ -->
+    <div id="intro" class="screen screen--intro" hidden>
+      <div class="noise"></div>
+      <div class="scan"></div>
+      <div class="card">
+        <div class="card__kicker" id="intro-kicker"></div>
+        <p class="card__body" id="intro-body"></p>
+        <button class="card__next" id="intro-next">CONTINUE ▸</button>
+        <div class="card__dots" id="intro-dots"></div>
       </div>
     </div>
 

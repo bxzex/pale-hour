@@ -17,17 +17,20 @@ import { Player } from '../entities/player.js';
 import { PostFX } from '../render/postfx.js';
 import { makeRng, hashSeed, clamp01, damp, lerp } from './rng.js';
 import { difficultyOf } from './settings.js';
+import { FIRST_NOTE_HINT } from '../story.js';
 import { rustTexture } from '../world/textures.js';
 import { Sky } from '../world/sky.js';
 import { Grass } from '../world/grass.js';
 import { windUniforms } from '../world/wind.js';
 import { Buildings } from '../world/buildings.js';
+import { Notes } from '../entities/notes.js';
 
 /** Ambient light levels at zero fragments; both dim as the run progresses. */
 const MOON_BASE = 1.5;
 const SKY_BASE = 2.1;
 
 export const PHASE = {
+  READING: 'reading',
   IDLE: 'idle',
   PLAYING: 'playing',
   PAUSED: 'paused',
@@ -74,7 +77,7 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.35;
+    this.renderer.toneMappingExposure = 1.0;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
   }
 
@@ -126,6 +129,8 @@ export class Game {
     this.fragments = new Fragments(
       this.terrain, this.forest, this.props, rng, this.scene, this.difficulty.fragments
     );
+
+    this.notes = new Notes(this.terrain, this.forest, this.props, this.buildings, rng, this.scene);
 
     this.player = new Player(this.camera, this.terrain, this.forest, this.props, this.settings, this.scene);
     this.player.onFootstep = (i, running) => this.audio.footstep(i, running);
@@ -250,6 +255,7 @@ export class Game {
     this.postfx.setFade(1);
     this.postfx.fadeTo(0);
     this.hud.show(this.difficulty.fragments);
+    this.hud.setNotes(0, this.notes.total);
     this.hud.opening();
     this.input.lock();
     this.input.onLockLost = () => {
@@ -310,6 +316,33 @@ export class Game {
     }, outcome === 'escaped' ? 2600 : 2300);
   }
 
+  /**
+   * Open a note. The world stops while you read — but the run clock does not,
+   * and neither does the sense that you have just chosen to stand still in a
+   * forest where standing still is how people here died.
+   */
+  _readNote(item) {
+    const data = this.notes.take(item);
+    if (!data) return;
+
+    this.phase = PHASE.READING;
+    this.input.unlock();
+    this.audio.pickup();
+    this.postfx.glitch(0.3);
+
+    if (this.notes.count === 1) this.hud.whisper(FIRST_NOTE_HINT, 5);
+    this.hud.setNotes(this.notes.count, this.notes.total);
+    this.hud.showNote(data, this.notes.count, this.notes.total);
+  }
+
+  closeNote() {
+    if (this.phase !== PHASE.READING) return;
+    this.hud.hideNote();
+    this.phase = PHASE.PLAYING;
+    this.input.lock();
+    this._clock.getDelta();
+  }
+
   /** Snap the camera onto it. Nobody survives the reverse shot. */
   _deathStare() {
     const e = this._killer ?? this.entity;
@@ -327,6 +360,8 @@ export class Game {
       total: this.difficulty?.fragments ?? 8,
       time: formatTime(this.elapsed),
       seed: this.seedText,
+      notesRead: this.notes?.count ?? 0,
+      notesTotal: this.notes?.total ?? 0,
     };
   }
 
@@ -412,6 +447,13 @@ export class Game {
 
     if (this.phase === PHASE.PLAYING) {
       this._step(dt);
+    } else if (this.phase === PHASE.READING) {
+      // The forest keeps breathing behind the page, but nothing moves.
+      this._worldTime = (this._worldTime ?? 0) + dt;
+      windUniforms.uWindTime.value = this._worldTime;
+      this.skyDome.update(dt, this.camera);
+      this.grass.update(dt, this._worldTime);
+      this.postfx.update(dt, { staticLevel: this._hordeStatic ?? 0, proximity: this._hordeProximity ?? 0 });
     } else if (this.phase === PHASE.ENDING) {
       this._stepEnding(dt);
     } else {
@@ -420,7 +462,7 @@ export class Game {
     }
 
     this.audio.update(dt, {
-      playing: this.phase === PHASE.PLAYING || this.phase === PHASE.ENDING,
+      playing: this.phase === PHASE.PLAYING || this.phase === PHASE.ENDING || this.phase === PHASE.READING,
       staticLevel: this._hordeStatic ?? 0,
       proximity: this._hordeProximity ?? 0,
       observed: this.entities?.some((e) => e.observed) ?? false,
@@ -442,9 +484,14 @@ export class Game {
 
     this.player.update(dt, this.input, this.difficulty);
 
-    if (this.input.hit('use')) this._tryPickup();
+    if (this.input.hit('use')) {
+      const note = this.notes.targetFor(this.player);
+      if (note) this._readNote(note);
+      else this._tryPickup();
+    }
 
     this.fragments.update(dt, this.player);
+    this.notes.update(dt, this.player);
 
     // Run every entity; the worst outcome any of them produces ends the run,
     // and the HUD reads the highest static and dread across all of them.
@@ -531,7 +578,10 @@ export class Game {
     const { item, distance } = this.fragments.targetFor(this.player);
     let hint = '';
 
-    if (item) {
+    const note = this.notes.targetFor(this.player);
+    if (note) {
+      hint = `<b>[E]</b> READ NOTE`;
+    } else if (item) {
       hint = `<b>[E]</b> TAKE FRAGMENT`;
       void distance;
     } else if (this.hud.lookFallback) {
@@ -606,7 +656,7 @@ export class Game {
     this.skyLight.intensity = SKY_BASE;
 
     for (const e of this.entities ?? []) e.dispose?.();
-    for (const part of [this.fragments, this.props, this.forest, this.grass, this.skyDome, this.buildings]) part?.dispose?.();
+    for (const part of [this.fragments, this.notes, this.props, this.forest, this.grass, this.skyDome, this.buildings]) part?.dispose?.();
     if (this.terrain) { this.scene.remove(this.terrain.mesh); this.terrain.dispose(); }
     for (const name of ['forest', 'props', 'fragments', 'entity', 'buildings']) {
       const obj = this.scene.getObjectByName(name);
@@ -621,7 +671,7 @@ export class Game {
       if (obj) this.scene.remove(obj);
     }
     this.terrain = this.forest = this.props = this.fragments = this.entity = this.player = null;
-    this.grass = this.skyDome = this.buildings = this._killer = null;
+    this.grass = this.skyDome = this.buildings = this.notes = this._killer = null;
     this.entities = [];
     this.exit = null;
 

@@ -16,6 +16,8 @@ Eight fragments. One forest. Something is already counting.
 
 A found-footage horror game in the lineage of *Slender: The Eight Pages* — first person, one forest, eight pages to collect, and a tall pale thing that does not move while you are looking at it.
 
+You are back in Ashen Fold eleven years after your brother walked into this wood to recover the parish register. The village kept eight pages and read eight names aloud at the treeline every autumn, and for ninety years nothing bad happened, which everyone agreed was the point. The last reading was in 1974.
+
 It runs entirely in the browser on WebGL2, and **it ships with no asset files at all**. Every texture is painted to a canvas at load, every model is assembled from primitives in code, and every sound is synthesised with the Web Audio API. The whole game is the source.
 
 ## What makes it more than a Slender clone
@@ -26,6 +28,7 @@ It runs entirely in the browser on WebGL2, and **it ships with no asset files at
 | **It freezes when watched** | It never advances while in view. That makes *you* the one who has to break the stalemate — and turning away is always the hard choice. |
 | **It repositions where you'd have missed it** | Every move requires line of sight from the destination and a minimum distance, and it prefers to land *behind* you. It never pops in at arm's length. |
 | **The world tightens as you collect** | Fog thickens, moonlight dies, and its patience shortens with every page. Eight is not a countdown to safety. |
+| **A story you have to work for** | Ten optional notes hidden inside the buildings — a warden's log, a surveyor's field report, a child's exercise book, your brother's notebook. They carry the actual history, and reading at least half of them changes the epilogue you get. Every one is a decision to stand still in a forest where standing still is how people here died. |
 | **Buildings you go inside** | Four log cabins and a two-room farmhouse, with real doorways and windows cut out of both the geometry and the collision. Interiors have stoves, bunks, tables and shelving, and their walls genuinely block line of sight — a cabin is the best place to break a stare, and also a box with one door. |
 | **Two kinds of hunter** | *Watchers* freeze while you look at them and kill you with static. *Stalkers* do not care where you are looking — they simply walk at you and kill on contact. Stalkers wake one at a time as you collect, so the run starts as a search and ends as a chase. They are slower than a sprint on purpose: always escapable, always exhausting. |
 | **There is an exit** | After the eighth fragment the gate at the treeline lights up and you have to actually reach it. The run ends in a chase, not a fade-out. |
@@ -42,7 +45,7 @@ It runs entirely in the browser on WebGL2, and **it ships with no asset files at
 | `Shift` | Sprint — costs breath, and it hears you |
 | `Ctrl` / `C` | Crouch — slow, quiet, small |
 | `F` | Toggle flashlight |
-| `E` / `Space` | Take fragment |
+| `E` / `Space` | Take fragment · read note · close a note |
 | `Esc` | Pause |
 
 Mouse look uses pointer lock. If your browser refuses pointer lock, the game falls back to click-and-drag looking and tells you so.
@@ -98,6 +101,7 @@ GitHub Pages is set to serve `gh-pages` at the repository root.
 ```
 src/
 ├── main.js              entry point, wires everything together
+├── story.js             every word of writing: intro, notes, endings
 ├── core/
 │   ├── game.js          scene, loop, state machine, run rules
 │   ├── input.js         keyboard + pointer lock (with fallback)
@@ -124,6 +128,7 @@ src/
 Two notes for anyone reading the code:
 
 - **Light intensities are in candela.** three.js has used physical light units since r155, so punctual lights need roughly 4π times the pre-r155 numbers. See `TORCH_CORE` in `player.js`.
+- **The torch is deliberately not physically correct.** A realistic beam clips the near ground to pure white under a fixed exposure and the bloom smears it across the frame. `TORCH_DECAY` is 1.05 rather than 2.0 so falloff stays gentle. Tuning these values is a look-at-it job, not a maths job.
 - **Albedo is decoded from sRGB.** A texture value of `40/255` becomes about `0.02` linear — nearly black no matter how bright the lights are. The base textures are deliberately lighter than they look.
 
 ## Tuning it yourself

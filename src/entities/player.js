@@ -20,10 +20,20 @@ const SPEED_WALK = 3.15;
 const SPEED_SPRINT = 5.75;
 const SPEED_CROUCH = 1.45;
 
-// Torch brightness, in candela (three.js physical light units).
-const TORCH_CORE = 460;
-const TORCH_SPILL = 120;
-const TORCH_HELD = 7;
+/**
+ * Torch tuning, in candela.
+ *
+ * These are far lower than a physically-correct flashlight, and deliberately
+ * so: with a fixed exposure and no eye adaptation, a realistic beam clips the
+ * near field to pure white and the bloom smears it across half the frame. A
+ * shallow decay (1.05 rather than 2.0) keeps the falloff gentle so the near
+ * ground does not blow out while the beam still reaches down-range.
+ */
+const TORCH_CORE = 42;
+const TORCH_SPILL = 12;
+const TORCH_HELD = 1.0;
+const TORCH_DECAY = 1.05;
+const TORCH_RANGE = 60;
 
 export class Player {
   constructor(camera, terrain, forest, props, settings, scene) {
@@ -68,12 +78,12 @@ export class Player {
     // Intensities are in candela — three.js has used physical light units since
     // r155, so punctual lights need roughly 4π times the old pre-r155 numbers.
     // See TORCH_CORE / TORCH_SPILL below if you are retuning the look.
-    this.torch = new THREE.SpotLight(0xffeccc, TORCH_CORE, 62, THREE.MathUtils.degToRad(21), 0.55, 1.6);
-    this.torchWide = new THREE.SpotLight(0xffe4c0, TORCH_SPILL, 30, THREE.MathUtils.degToRad(46), 0.9, 1.5);
+    this.torch = new THREE.SpotLight(0xffeccc, TORCH_CORE, TORCH_RANGE, THREE.MathUtils.degToRad(23), 0.62, TORCH_DECAY);
+    this.torchWide = new THREE.SpotLight(0xffe4c0, TORCH_SPILL, TORCH_RANGE * 0.55, THREE.MathUtils.degToRad(48), 0.92, TORCH_DECAY);
     this.torch.castShadow = true;
     this.torch.shadow.mapSize.set(1024, 1024);
     this.torch.shadow.camera.near = 0.4;
-    this.torch.shadow.camera.far = 60;
+    this.torch.shadow.camera.far = TORCH_RANGE;
     this.torch.shadow.bias = -0.0016;
     this.torch.shadow.normalBias = 0.03;
 
@@ -238,7 +248,7 @@ export class Player {
     this.torch.intensity = damp(this.torch.intensity, on * TORCH_CORE * charge * this._lightFlicker, 18, dt);
     this.torchWide.intensity = damp(this.torchWide.intensity, on * TORCH_SPILL * charge * this._lightFlicker, 18, dt);
     this.held.intensity = damp(this.held.intensity, on * TORCH_HELD * charge, 12, dt);
-    this.torch.distance = 40 + this.battery * 24;
+    this.torch.distance = TORCH_RANGE * (0.72 + this.battery * 0.28);
   }
 
   _applyCamera(dt) {

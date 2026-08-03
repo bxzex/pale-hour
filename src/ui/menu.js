@@ -5,6 +5,7 @@
  */
 
 import { DIFFICULTIES, saveSettings } from '../core/settings.js';
+import { ENDINGS, MENU_LINES } from '../story.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -50,7 +51,14 @@ export class Menu {
     this._wireOptions();
     this._buildDifficulty();
     this._wireKeys();
+    this._rotateTagline();
     this._runBoot();
+  }
+
+  /** A different line under the title each session. */
+  _rotateTagline() {
+    const el = document.querySelector('.menu__tag');
+    if (el) el.innerHTML = MENU_LINES[Math.floor(Math.random() * MENU_LINES.length)];
   }
 
   /* ── screen plumbing ────────────────────────────────────────── */
@@ -144,6 +152,9 @@ export class Menu {
           this.hideAll();
           this.h.onRetry();
           break;
+        case 'close-reader':
+          this.h.onCloseReader?.();
+          break;
       }
     });
 
@@ -154,6 +165,16 @@ export class Menu {
   }
 
   _wireKeys() {
+    // The reader swallows every key it cares about before anything else sees it.
+    addEventListener('keydown', (e) => {
+      if (!this.h.isReaderOpen?.()) return;
+      if (['KeyE', 'Space', 'Enter', 'Escape'].includes(e.code)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        this.h.onCloseReader?.();
+      }
+    }, true);
+
     addEventListener('keydown', (e) => {
       if (e.code !== 'Escape') return;
       e.preventDefault();
@@ -292,32 +313,23 @@ export class Menu {
   /**
    * @param {'caught'|'consumed'|'escaped'} outcome
    */
-  showEnd(outcome, { found, total, time, seed }) {
+  showEnd(outcome, { found, total, time, seed, notesRead = 0, notesTotal = 0 }) {
     const box = document.querySelector('.overbox');
-    const copy = {
-      caught: {
-        tag: 'SIGNAL LOST',
-        title: 'CAUGHT',
-        sub: 'It closed the distance while you were deciding what to do. There was no sound at the end, which is the part nobody believes.',
-      },
-      consumed: {
-        tag: 'TAPE CORRUPTED',
-        title: 'UNMADE',
-        sub: 'You looked too long. The static took the picture first and the rest of you after.',
-      },
-      escaped: {
-        tag: 'RECOVERED FOOTAGE',
-        title: 'OUT',
-        sub: 'Eight pages, and the treeline let you through. The tape keeps running for four more minutes after you stop being on it.',
-      },
-    }[outcome];
+    const copy = ENDINGS[outcome];
+
+    // The epilogue depends on how much of the history you actually read. Skip
+    // the notes and you get the blunt version; read most of them and the
+    // ending explains what you were part of.
+    const informed = notesTotal > 0 && notesRead / notesTotal >= 0.5;
+    const epilogue = informed ? copy.epilogue.many : copy.epilogue.few;
 
     box.classList.toggle('overbox--win', outcome === 'escaped');
     $('over-tag').textContent = copy.tag;
     $('over-title').textContent = copy.title;
-    $('over-sub').textContent = copy.sub;
+    $('over-sub').innerHTML = `${copy.sub}<br /><br />${epilogue}`;
     $('over-stats').innerHTML =
       `<div>FRAGMENTS <b>${found}/${total}</b></div>` +
+      `<div>NOTES <b>${notesRead}/${notesTotal}</b></div>` +
       `<div>TIME <b>${time}</b></div>` +
       `<div>SEED <b>${seed}</b></div>`;
     this.show('over');
