@@ -8,16 +8,22 @@ export class Hud {
   constructor() {
     this.root = $('hud');
     this.clock = $('hud-clock');
-    this.found = $('hud-found');
-    this.total = $('hud-total');
-    this.battery = $('hud-battery');
-    this.stamina = $('hud-stamina');
+    this.dayEl = $('hud-day');
+    this.todEl = $('hud-tod');
+    this.phaseEl = $('hud-phase');
+    this.heldEl = $('hud-held');
+    this.promptEl = $('hud-prompt');
+    this.promptLabel = $('prompt-label');
+    this.promptFill = $('prompt-fill');
+    this.promptKey = $('prompt-key');
+    this.toastsEl = $('toasts');
+    this.vitals = {};
+    for (const k of ['health', 'hunger', 'thirst', 'warmth', 'stamina']) {
+      this.vitals[k] = { fill: $(`v-${k}`), row: document.querySelector(`.vital[data-v="${k}"]`) };
+    }
     this.hint = $('hud-hint');
     this.notesEl = $('hud-notes');
     this.whisperEl = $('whisper');
-    this.fragBox = document.querySelector('.frag');
-    this.batteryMeter = this.battery.closest('.meter');
-    this.staminaMeter = this.stamina.closest('.meter');
     this._whisperTimer = 0;
     this._lastHint = '';
     this.lookFallback = false;
@@ -28,9 +34,7 @@ export class Hud {
     this.lookFallback = on;
   }
 
-  show(total) {
-    this.total.textContent = total;
-    this.found.textContent = '0';
+  show() {
     this.root.classList.add('is-on');
     document.body.classList.add('playing');
   }
@@ -41,27 +45,52 @@ export class Hud {
     this.clearWhisper();
   }
 
-  setFound(n) {
-    this.found.textContent = n;
-    this.fragBox.classList.remove('is-hit');
-    // force a reflow so the animation replays on consecutive pickups
-    void this.fragBox.offsetWidth;
-    this.fragBox.classList.add('is-hit');
+  setClock(day, timeText, phaseName) {
+    this.dayEl.textContent = `DAY ${day}`;
+    this.todEl.textContent = timeText;
+    this.phaseEl.textContent = phaseName;
   }
 
-  setTime(seconds) {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    const text = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    if (this.clock.textContent !== text) this.clock.textContent = text;
+  /** @param {object} sv a Survival instance */
+  setVitals(sv) {
+    const set = (k, v) => {
+      const row = this.vitals[k];
+      row.fill.style.transform = `scaleX(${Math.max(0, Math.min(1, v))})`;
+      row.row.classList.toggle('is-low', v < 0.25);
+    };
+    set('health', sv.health);
+    set('hunger', sv.hunger);
+    set('thirst', sv.thirst);
+    set('warmth', sv.warmth);
+    set('stamina', sv.stamina);
   }
 
-  setMeters(battery, stamina) {
-    this.battery.style.transform = `scaleX(${battery})`;
-    this.stamina.style.transform = `scaleX(${stamina})`;
-    this.batteryMeter.classList.toggle('is-low', battery < 0.22);
-    this.staminaMeter.classList.toggle('is-low', stamina < 0.2);
+  setHeld(text) {
+    this.heldEl.innerHTML = text || '';
+  }
+
+  /**
+   * The centre-screen interaction prompt.
+   * @param {null|{label:string, key:string, progress:number, blocked:boolean}} p
+   */
+  setPrompt(p) {
+    if (!p) { this.promptEl.classList.remove('is-on'); return; }
+    this.promptEl.classList.add('is-on');
+    this.promptEl.classList.toggle('is-blocked', Boolean(p.blocked));
+    this.promptLabel.textContent = p.label;
+    this.promptKey.innerHTML = p.key;
+    this.promptFill.style.transform = `scaleX(${p.progress ?? 1})`;
+  }
+
+  /** Transient centre-bottom message. Warnings are red and stay longer. */
+  toast(text, warn = false) {
+    const el = document.createElement('div');
+    el.className = `toast ${warn ? 'toast--warn' : ''}`;
+    el.innerHTML = text;
+    this.toastsEl.appendChild(el);
+    setTimeout(() => el.remove(), 2600);
+    // never let a spam of pickups grow without bound
+    while (this.toastsEl.children.length > 5) this.toastsEl.firstChild.remove();
   }
 
   setHint(html) {
@@ -84,7 +113,7 @@ export class Hud {
   }
 
   opening() {
-    this.whisper('Find the eight. Get to the gate. <i>Do not stop to look at it.</i>', 5.5);
+    this.whisper('Wood, water, fire — in that order, and before dark.', 6);
   }
 
   fragmentLine(index) {
@@ -92,9 +121,7 @@ export class Hud {
     if (line) this.whisper(line, 5.4);
   }
 
-  setNotes(read, total) {
-    this.notesEl.innerHTML = read > 0 ? `NOTES <b>${read}/${total}</b>` : '';
-  }
+  setNotes() { /* notes counter retired with the fragment HUD */ }
 
   /* ── the note reader ──────────────────────────────────────── */
 

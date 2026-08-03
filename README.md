@@ -14,54 +14,56 @@ Eight fragments. One forest. Something is already counting.
 
 ## What it is
 
-A found-footage horror game in the lineage of *Slender: The Eight Pages* — first person, one forest, eight pages to collect, and a tall pale thing that does not move while you are looking at it.
+An open-world survival game in a forest that is safe in daylight and genuinely not at night. It runs entirely in the browser on WebGL2, and **it ships with no asset files at all** — every texture is painted to a canvas at load, every model is assembled from primitives in code, and every sound is synthesised with the Web Audio API.
 
-You are back in Ashen Fold eleven years after your brother walked into this wood to recover the parish register. The village kept eight pages and read eight names aloud at the treeline every autumn, and for ninety years nothing bad happened, which everyone agreed was the point. The last reading was in 1974.
+The loop is the one the genre settled on, because it works: gather, craft, build, and get warm before dark.
 
-It runs entirely in the browser on WebGL2, and **it ships with no asset files at all**. Every texture is painted to a canvas at load, every model is assembled from primitives in code, and every sound is synthesised with the Web Audio API. The whole game is the source.
+## The day
 
-## What makes it more than a Slender clone
+You start with nothing. Sticks and loose stone are lying on the ground; berry bushes and mushroom clusters are scattered through the trees; five ponds hold water that will make you ill unless you boil it. From that you make a stone axe, which makes trees worth felling, which makes everything else possible.
 
 | | |
 |---|---|
-| **The static is the health bar** | Looking at it fills the frame with tape noise. A glance is cheap; a stare is fatal. Break line of sight and it drains back down. |
-| **It freezes when watched** | It never advances while in view. That makes *you* the one who has to break the stalemate — and turning away is always the hard choice. |
-| **It repositions where you'd have missed it** | Every move requires line of sight from the destination and a minimum distance, and it prefers to land *behind* you. It never pops in at arm's length. |
-| **The world tightens as you collect** | Fog thickens, moonlight dies, and its patience shortens with every page. Eight is not a countdown to safety. |
-| **A story you have to work for** | Ten optional notes hidden inside the buildings — a warden's log, a surveyor's field report, a child's exercise book, your brother's notebook. They carry the actual history, and reading at least half of them changes the epilogue you get. Every one is a decision to stand still in a forest where standing still is how people here died. |
-| **Buildings you go inside** | Four log cabins and a two-room farmhouse, with real doorways and windows cut out of both the geometry and the collision. Interiors have stoves, bunks, tables and shelving, and their walls genuinely block line of sight — a cabin is the best place to break a stare, and also a box with one door. |
-| **Two kinds of hunter** | *Watchers* freeze while you look at them and kill you with static. *Stalkers* do not care where you are looking — they simply walk at you and kill on contact. Stalkers wake one at a time as you collect, so the run starts as a search and ends as a chase. They are slower than a sprint on purpose: always escapable, always exhausting. |
-| **There is an exit** | After the eighth fragment the gate at the treeline lights up and you have to actually reach it. The run ends in a chase, not a fade-out. |
-| **Resources that matter** | A torch battery that visibly dies, and breath that limits sprinting. Killing the light hides you — and hides the pages too. |
-| **A real camcorder lens** | Barrel distortion, chroma bleed, tracking slip, dropout lines, interlace shimmer and a static storm, all in one shader pass. |
-| **A world that moves** | 26,000 wind-animated grass tufts, swaying canopies and undergrowth on a shared gust front, dust motes drifting through the torch beam, 2,600 twinkling stars and a cratered moon. |
-| **Sound that tracks your body** | Breathing that speeds up and turns ragged as you burn through stamina, a two-transient flashlight click, footsteps timed by distance travelled, a dread-driven score that adds voices as it builds, and the entity's own inharmonic vocalisations. |
+| **Five things can kill you** | Health, food, water, warmth, breath. Meters don't kill you directly — they drain *health*, so an empty meter is a spiral you can still escape rather than an instant loss. |
+| **Water is the fastest clock** | Thirst runs out in about nine minutes, hunger in fifteen. You have to triage. |
+| **Warmth is the one the world attacks** | Daylight rewarms you, night takes it away, and fire beats both. That is what gives the day/night cycle teeth. |
+| **Tools gate progress** | Bare hands strip a tree slowly and cannot touch rock at all. An axe makes wood practical; a pick opens rock and iron ore. |
+| **Fire is the centre of gravity** | A campfire is warmth, light, safety and the only cooking station — and it burns fuel, so it is something you keep feeding. |
+| **Shelter buys the night** | A lean-to blocks the cold and lets you sleep through to dawn, at the cost of the hunger and thirst those hours would have taken. |
+
+## The night
+
+A full day is about sixteen real minutes, and the cycle is a keyframed grade — sun colour and angle, ambient light, fog, star opacity all move together through dawn, midday, dusk and dead of night.
+
+Night is mostly about cold and dark. But occasionally, in deep night, away from any lit fire, something wakes up. It is rare on purpose: most nights are a resource problem, and the ones that are not are memorable. Reach a fire and it loses interest.
+
+The camcorder grade follows the sun too — grain, chroma bleed, vignette and desaturation all back off in daylight and return after dusk, so day and night do not just differ in brightness.
 
 ## Controls
 
 | Key | Action |
 |---|---|
 | `W` `A` `S` `D` | Move |
-| `Shift` | Sprint — costs breath, and it hears you |
-| `Ctrl` / `C` | Crouch — slow, quiet, small |
-| `F` | Toggle flashlight |
-| `E` / `Space` | Take fragment · read note · close a note |
+| `Shift` | Sprint — costs breath |
+| `Ctrl` / `C` | Crouch |
+| `E` | Harvest · drink · feed a fire · sleep |
+| `Tab` / `I` | Pack — inventory and crafting |
+| `Q` | Place a campfire or shelter |
+| `F` | Flashlight |
 | `Esc` | Pause |
 
-Mouse look uses pointer lock. If your browser refuses pointer lock, the game falls back to click-and-drag looking and tells you so.
+Mouse look uses pointer lock. If your browser refuses it, the game falls back to click-and-drag and says so.
 
-## Difficulty
+## Crafting
 
-Four settings, tuned on how much rope you get rather than how much damage you take — there is no health bar, only static.
-
-- **WANDER** — patient. For learning the forest and reading every note.
-- **DREAD** — the intended tape.
-- **STATIC** — it is rarely more than a treeline away.
-- **PALE HOUR** — most runs end before the third fragment.
-
-## Seeds
-
-Every forest is generated from a single integer seed: terrain, tree placement, every landmark, and where the eight fragments are nailed up. Enter a seed in Options and share it — anyone who enters the same seed walks an identical forest. Leave it blank for a new one each run.
+| Item | Costs | Notes |
+|---|---|---|
+| Stone axe | 2 branch, 3 stone, 2 fibre | Makes trees worth felling |
+| Stone pick | 2 branch, 4 stone, 2 fibre | Opens rock and iron ore |
+| Torch | 1 branch, 2 fibre | Light that is not the failing flashlight |
+| Campfire | 3 wood, 4 stone, 2 branch | Warmth, light, cooking |
+| Lean-to | 6 wood, 6 branch, 4 fibre | Sleep through to dawn |
+| Cooked meat / clean water | raw ingredient | Requires a lit fire |
 
 ## Running it locally
 
@@ -104,6 +106,8 @@ src/
 ├── story.js             every word of writing: intro, notes, endings
 ├── core/
 │   ├── game.js          scene, loop, state machine, run rules
+│   ├── survival.js      health, hunger, thirst, warmth, stamina
+│   ├── items.js         items, recipes, inventory
 │   ├── input.js         keyboard + pointer lock (with fallback)
 │   ├── settings.js      persisted options and difficulty tuning
 │   └── rng.js           seeded RNG, value noise, fbm, easing
@@ -111,6 +115,9 @@ src/
 │   ├── textures.js      every texture in the game, drawn to canvas
 │   ├── buildings.js     enterable cabins and farmhouse, walls with openings
 │   ├── sky.js           stars, the moon and its haze
+│   ├── daynight.js      the day/night cycle and its colour grade
+│   ├── resources.js     harvestable trees, rock, forage, water
+│   ├── placeables.js    campfires and shelters
 │   ├── grass.js         instanced grass tufts and drifting motes
 │   ├── wind.js          one shared wind, patched into any material
 │   ├── terrain.js       heightfield + the shared height function
@@ -135,6 +142,9 @@ Two notes for anyone reading the code:
 
 Most of the feel lives in two places:
 
+- `src/core/survival.js` — the `RATES` table: how fast every meter drains and how much damage an empty one does. The whole difficulty of the survival layer is one object.
+- `src/world/daynight.js` — the `GRADE` table: one row per time of day. Adding a new time of day means adding a row, not touching five systems.
+- `src/core/items.js` — `ITEMS` and `RECIPES`. The progression ladder is deliberately short.
 - `src/core/settings.js` — the `DIFFICULTIES` table: how many watchers and stalkers, how fast chasers move, when each wakes, spawn distances, reposition interval, how fast static fills and drains, battery drain.
 - `src/entities/entity.js` — the four rules the AI is built on are written at the top of the file. Change them and it becomes a different game.
 

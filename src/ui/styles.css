@@ -710,3 +710,127 @@ kbd {
   color: var(--bone-faint);
 }
 .notes b { color: var(--bone-dim); }
+
+
+/* ══════════════════════════════════════════════════════════════
+   SURVIVAL HUD
+   ══════════════════════════════════════════════════════════════ */
+.daycount { font-size: 26px; font-weight: 800; letter-spacing: 0.06em; line-height: 1; }
+.tod { margin-top: 6px; font-size: 10px; letter-spacing: 0.26em; color: var(--bone-dim); font-variant-numeric: tabular-nums; }
+
+.vitals { display: grid; gap: 7px; }
+.vital { display: flex; align-items: center; gap: 10px; }
+.vital__k { width: 7ch; font-size: 9px; letter-spacing: 0.22em; color: var(--bone-dim); }
+.vital__track {
+  width: 150px; height: 7px;
+  border: 1px solid var(--bone-faint);
+  padding: 1px;
+  display: block;
+}
+.vital__track i {
+  display: block; height: 100%; width: 100%;
+  background: var(--bone);
+  transform-origin: left;
+  transition: transform 0.18s linear, background 0.3s;
+}
+.vital[data-v="health"]  i { background: #c0392b; }
+.vital[data-v="hunger"]  i { background: #b08a3c; }
+.vital[data-v="thirst"]  i { background: #3c7fb0; }
+.vital[data-v="warmth"]  i { background: #c4622a; }
+.vital[data-v="stamina"] i { background: #7d8a72; }
+.vital.is-low i { animation: pulseLow 0.9s steps(2) infinite; }
+.vital.is-low .vital__k { color: var(--blood-lit); }
+@keyframes pulseLow { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.35; } }
+
+.held { margin-top: 8px; font-size: 10px; letter-spacing: 0.2em; color: var(--bone-dim); }
+.held b { color: var(--bone); }
+
+/* centre interaction prompt */
+.prompt {
+  position: absolute;
+  left: 50%; top: 56%;
+  transform: translateX(-50%);
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.prompt.is-on { opacity: 1; }
+.prompt__label { font-size: 11px; letter-spacing: 0.26em; color: var(--bone); }
+.prompt__bar {
+  width: 120px; height: 3px; margin: 8px auto 6px;
+  background: rgba(232, 228, 217, 0.18);
+}
+.prompt__bar i { display: block; height: 100%; background: var(--bone); transform-origin: left; }
+.prompt__key { font-size: 10px; letter-spacing: 0.24em; color: var(--bone-dim); }
+.prompt__key b { color: var(--blood-lit); }
+.prompt.is-blocked .prompt__label { color: var(--blood-lit); }
+
+/* toasts: pickups and warnings */
+.toasts {
+  position: absolute;
+  left: 50%; bottom: 22%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 5px;
+  justify-items: center;
+  pointer-events: none;
+}
+.toast {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--bone);
+  text-shadow: 0 2px 8px #000;
+  animation: toastUp 2.6s ease-out forwards;
+}
+.toast--warn { color: var(--blood-lit); font-weight: 700; }
+@keyframes toastUp {
+  0%   { opacity: 0; transform: translateY(8px); }
+  12%  { opacity: 1; transform: none; }
+  75%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-10px); }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PACK / CRAFTING
+   ══════════════════════════════════════════════════════════════ */
+.panel--wide { width: min(1000px, 100%); }
+.panel__sub { flex: 1; font-size: 10px; letter-spacing: 0.22em; color: #5e5748; }
+
+.pack { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--rule); overflow: hidden; }
+.pack__col { background: var(--ink-2); padding: clamp(16px, 2vw, 26px); overflow-y: auto; max-height: 62vh; }
+.pack__h { font-size: 10px; letter-spacing: 0.3em; color: var(--blood); margin-bottom: 16px; }
+
+.pack__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.slot { background: var(--ink-3); padding: 11px 12px; text-align: left; }
+.slot__n { float: right; font-size: 13px; font-weight: 800; color: var(--bone); }
+.slot__name { font-size: 10px; letter-spacing: 0.14em; color: var(--bone); }
+.slot__desc { margin-top: 5px; font-size: 9px; line-height: 1.6; color: var(--bone-faint); letter-spacing: 0.04em; }
+.slot--use { cursor: pointer; transition: background 0.12s; }
+.slot--use:hover { background: var(--bone); }
+.slot--use:hover .slot__name, .slot--use:hover .slot__n { color: var(--ink); }
+.slot--use:hover .slot__desc { color: #4a4740; }
+.slot__use { display: block; margin-top: 7px; font-size: 9px; letter-spacing: 0.2em; color: var(--blood-lit); }
+.pack__empty { font-size: 11px; color: var(--bone-faint); letter-spacing: 0.1em; line-height: 1.9; }
+
+.recipe {
+  display: block; width: 100%; text-align: left;
+  border: 1px solid var(--rule);
+  padding: 13px 14px;
+  margin-bottom: 8px;
+  transition: background 0.12s, border-color 0.12s;
+}
+.recipe__top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.recipe__name { font-size: 12px; font-weight: 700; letter-spacing: 0.16em; color: var(--bone); }
+.recipe__at { font-size: 9px; letter-spacing: 0.2em; color: var(--blood-lit); }
+.recipe__blurb { margin-top: 6px; font-size: 9px; line-height: 1.7; color: var(--bone-faint); letter-spacing: 0.04em; }
+.recipe__cost { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 5px; }
+.recipe__cost span { font-size: 9px; letter-spacing: 0.14em; border: 1px solid var(--rule); padding: 3px 6px; color: var(--bone-dim); }
+.recipe__cost span.short { color: var(--blood-lit); border-color: rgba(172, 26, 14, 0.5); }
+.recipe.can { border-color: var(--bone-faint); cursor: pointer; }
+.recipe.can:hover { background: var(--bone); border-color: var(--bone); }
+.recipe.can:hover .recipe__name { color: var(--ink); }
+.recipe.can:hover .recipe__blurb { color: #4a4740; }
+.recipe.can:hover .recipe__cost span { color: #4a4740; border-color: rgba(0,0,0,0.25); }
+.recipe:not(.can) { opacity: 0.55; }
+
+@media (max-width: 780px) { .pack { grid-template-columns: 1fr; } }

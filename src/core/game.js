@@ -20,14 +20,16 @@ import { difficultyOf } from './settings.js';
 import { FIRST_NOTE_HINT } from '../story.js';
 import { rustTexture } from '../world/textures.js';
 import { Sky } from '../world/sky.js';
+import { DayNight, DAY_LENGTH } from '../world/daynight.js';
+import { Resources } from '../world/resources.js';
+import { Placeables, FIRE_RADIUS } from '../world/placeables.js';
+import { Survival } from './survival.js';
+import { Inventory, ITEMS } from './items.js';
+import { Pack } from '../ui/pack.js';
 import { Grass } from '../world/grass.js';
 import { windUniforms } from '../world/wind.js';
 import { Buildings } from '../world/buildings.js';
 import { Notes } from '../entities/notes.js';
-
-/** Ambient light levels at zero fragments; both dim as the run progresses. */
-const MOON_BASE = 1.5;
-const SKY_BASE = 2.1;
 
 export const PHASE = {
   READING: 'reading',
@@ -83,22 +85,13 @@ export class Game {
 
   _initScene() {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x05070a);
-    this.fog = new THREE.FogExp2(0x0b1016, 0.020);
-    this.scene.fog = this.fog;
 
     this.camera = new THREE.PerspectiveCamera(this.settings.fov, innerWidth / innerHeight, 0.08, 400);
     this.scene.add(this.camera);
 
-    // Moonlight: barely there. Two sources so silhouettes still read as 3D.
-    // Directional and hemisphere lights are not affected by the physical-units
-    // change that punctual lights are, so these stay small numbers.
-    this.moon = new THREE.DirectionalLight(0x6d84a8, MOON_BASE);
-    this.moon.position.set(-60, 90, 40);
-    this.scene.add(this.moon);
-
-    this.skyLight = new THREE.HemisphereLight(0x2c3a52, 0x0a0b09, SKY_BASE);
-    this.scene.add(this.skyLight);
+    // Lighting, fog and sky background are all owned by the day/night cycle.
+    this.daynight = new DayNight(this.scene, 0.30);
+    this.fog = this.daynight.fog;
 
     this.postfx = new PostFX(this.renderer, this.scene, this.camera, this.settings);
     this._onResize();
@@ -122,6 +115,8 @@ export class Game {
     this.skyDome = new Sky(seed, this.scene);
     this.forest = new Forest(this.terrain, rng, this.scene);
     this.grass = new Grass(this.terrain, this.forest, seed, this.scene);
+    this.resources = new Resources(this.terrain, this.forest, seed, this.scene);
+    this.placeables = new Placeables(this.terrain, this.scene);
     this.props = new Props(this.terrain, this.forest, rng, this.scene);
     // Buildings register their colliders and anchors into props, so they must
     // exist before fragments choose where to hang.
@@ -137,6 +132,27 @@ export class Game {
     this.player.onLightToggle = (on) => this.audio.flashlight(on);
 
     this._buildHorde(rng);
+
+    this.survival = new Survival();
+    this.inventory = new Inventory(20);
+    this._crafted = 0;
+    this.pack = new Pack(this.inventory, {
+      onCraft: (recipe) => {
+        if (this.inventory.craft(recipe)) {
+          this._crafted++;
+          this.audio.ui('select');
+          this.hud.toast(`CRAFTED ${ITEMS[Object.keys(recipe.out)[0]].name}`);
+          this.pack.render();
+        }
+      },
+      onUse: (id) => this.consume(id),
+      nearFire: () => Boolean(
+        this.placeables?.fireAt(this.player.position.x, this.player.position.z)
+      ),
+    });
+    this.daynight.t = 0.30;      // start mid-morning: one full day to prepare
+    this.daynight.day = 1;
+    this.daysSurvived = 0;
 
     this._buildExit(rng);
 
@@ -249,13 +265,14 @@ export class Game {
     this.build(this.settings.seed);
     this.elapsed = 0;
     this.phase = PHASE.PLAYING;
-    for (const e of this.entities) {
-      if (e.activateAt <= 0) e.begin(this.player);
-    }
+    // Nothing is awake at the start: threats are a night event now.
+    for (const e of this.entities) { e.state = STATE.DORMANT; e.group.visible = false; }
+    this._threatTimer = 240;
+    this.survival.reset();
+    this.inventory.clear();
     this.postfx.setFade(1);
     this.postfx.fadeTo(0);
-    this.hud.show(this.difficulty.fragments);
-    this.hud.setNotes(0, this.notes.total);
+    this.hud.show();
     this.hud.opening();
     this.input.lock();
     this.input.onLockLost = () => {
@@ -267,6 +284,7 @@ export class Game {
   pause() {
     if (this.phase !== PHASE.PLAYING) return;
     this.phase = PHASE.PAUSED;
+    this.pack?.close();
     this.input.unlock();
     this.hud.hide();
     this.audio.suspend();
@@ -277,8 +295,7 @@ export class Game {
     if (this.phase !== PHASE.PAUSED) return;
     this.phase = PHASE.PLAYING;
     this.audio.resume();
-    this.hud.show(this.difficulty.fragments);
-    this.hud.setFound(this.fragments.found);
+    this.hud.show();
     this.input.lock();
     this._clock.getDelta();
   }
@@ -291,7 +308,7 @@ export class Game {
     this.dispose(false);
   }
 
-  /** @param {'caught'|'consumed'|'escaped'} outcome */
+  /** @param {string} outcome 'caught' | 'consumed' | 'exposure' | 'thirst' | 'starvation' | 'injury' */
   end(outcome) {
     if (this.phase === PHASE.ENDING || this.phase === PHASE.OVER) return;
     this.phase = PHASE.ENDING;
@@ -356,12 +373,11 @@ export class Game {
 
   get stats() {
     return {
-      found: this.fragments?.found ?? 0,
-      total: this.difficulty?.fragments ?? 8,
+      days: this.daynight?.day ?? 1,
       time: formatTime(this.elapsed),
       seed: this.seedText,
-      notesRead: this.notes?.count ?? 0,
-      notesTotal: this.notes?.total ?? 0,
+      crafted: this._crafted ?? 0,
+      cause: this.survival?.causeOfDeath ?? null,
     };
   }
 
@@ -424,8 +440,6 @@ export class Game {
     // The world tightens with every page: fog closes, moon dims.
     const t = n / this.difficulty.fragments;
     this._fogTarget = lerp(0.020, 0.050, t);
-    this.moon.intensity = lerp(MOON_BASE, MOON_BASE * 0.34, t);
-    this.skyLight.intensity = lerp(SKY_BASE, SKY_BASE * 0.36, t);
     this.skyDome.setDim(t);
 
     if (n >= this.difficulty.fragments) this._openExit();
@@ -479,26 +493,106 @@ export class Game {
     this.elapsed += dt;
     this._worldTime = (this._worldTime ?? 0) + dt;
     windUniforms.uWindTime.value = this._worldTime;
+
+    // ── time of day drives everything else
+    const newDay = this.daynight.update(dt);
+    if (newDay) this._onNewDay();
+
     this.skyDome.update(dt, this.camera);
+    this.skyDome.setStarOpacity?.(this.daynight.state.stars);
     this.grass.update(dt, this._worldTime);
+    this.resources.update(dt);
+    this.placeables.update(dt);
 
     this.player.update(dt, this.input, this.difficulty);
 
-    if (this.input.hit('use')) {
-      const note = this.notes.targetFor(this.player);
-      if (note) this._readNote(note);
-      else this._tryPickup();
+    // ── pack and placement
+    if (this.input.hit('pack')) {
+      this.pack.toggle();
+      this.audio.ui('select');
+    }
+    if (this.input.hit('place')) this._placeHeld();
+
+    // ── interaction
+    if (this.input.hit('use')) this._interact();
+
+    // ── survival meters
+    const fire = this.placeables.fireAt(this.player.position.x, this.player.position.z);
+    const shelter = this.placeables.shelterAt(this.player.position.x, this.player.position.z)
+      || this.buildings.roomAt(this.player.position.x, this.player.position.z);
+
+    const warnings = this.survival.update(dt, {
+      daylight: this.daynight.daylight,
+      sprinting: this.player.sprinting,
+      moving: this.player.speed > 0.4,
+      nearFire: Boolean(fire),
+      sheltered: Boolean(shelter),
+    });
+    for (const w of warnings) this.hud.toast(w, true);
+
+    // The player's own stamina is now owned by Survival, not Player.
+    this.player.stamina = this.survival.stamina;
+
+    if (this.survival.dead) {
+      this.end(this.survival.causeOfDeath);
+      return;
     }
 
-    this.fragments.update(dt, this.player);
-    this.notes.update(dt, this.player);
+    // ── the horde: rare, and only at night
+    this._updateThreat(dt);
 
-    // Run every entity; the worst outcome any of them produces ends the run,
-    // and the HUD reads the highest static and dread across all of them.
+    this._updateAtmosphere(dt);
+    this._updateHud(fire, shelter);
+  }
+
+  /** Fires when the clock rolls past midnight. */
+  _onNewDay() {
+    this.daysSurvived = this.daynight.day - 1;
+    this.hud.toast(`DAY ${this.daynight.day} — you are still here`, false);
+    this.audio.escalate(Math.min(8, this.daysSurvived + 2));
+  }
+
+  /**
+   * Horror is now a rare night event rather than the core loop. A stalker is
+   * eligible only in deep night, only away from a lit fire, and only after a
+   * cooldown — so most nights are about cold and dark, and the ones that are
+   * not are memorable.
+   */
+  _updateThreat(dt) {
+    this._threatTimer = (this._threatTimer ?? 90) - dt;
+    const deepNight = this.daynight.isDeepNight;
+    const safe = Boolean(this.placeables.fireAt(this.player.position.x, this.player.position.z));
+
+    // wake something
+    if (deepNight && !safe && this._threatTimer <= 0) {
+      const sleeping = this.entities.filter((e) => e.state === STATE.DORMANT);
+      if (sleeping.length) {
+        const e = sleeping[Math.floor(Math.random() * sleeping.length)];
+        e.begin(this.player);
+        this.audio.creature(0.9);
+        this.postfx.glitch(1.2);
+        this.hud.toast('SOMETHING IS AWAKE', true);
+        this.hud.whisper('<i>Something out past the trees has noticed the dark too.</i>', 5);
+      }
+      this._threatTimer = 150 + Math.random() * 180;
+    }
+
+    // send them back to sleep at dawn, or when you reach a fire
+    if (!deepNight || safe) {
+      for (const e of this.entities) {
+        if (e.state !== STATE.DORMANT
+            && e.position.distanceTo(this.player.position) > 34) {
+          e.state = STATE.DORMANT;
+          e.group.visible = false;
+        }
+      }
+    }
+
     let result = 'alive';
     let worstStatic = 0, worstProx = 0;
     for (const e of this.entities) {
       if (e.state === STATE.DORMANT) continue;
+      e.group.visible = true;
       const r = e.update(dt, this.player, this.camera);
       if (r !== 'alive') { result = r; this._killer = e; }
       if (e.static > worstStatic) worstStatic = e.static;
@@ -506,27 +600,121 @@ export class Game {
     }
     this._hordeStatic = worstStatic;
     this._hordeProximity = worstProx;
-
-    // A chaser inside this radius is the cue to stop searching and move.
     this._chaseNear = this.entities.some(
-      (e) => e.archetype === ARCHETYPE.STALKER
-        && e.state !== STATE.DORMANT
+      (e) => e.state !== STATE.DORMANT
         && e.position.distanceTo(this.player.position) < 16
     );
 
-    this._updateExit(dt);
-    this._updateAtmosphere(dt);
-    this._updateHud();
-
     if (result !== 'alive') {
       this.hud.flashDamage();
-      this.end(result);
-      return;
+      this.end(result === 'consumed' ? 'consumed' : 'caught');
+    }
+  }
+
+  /* ── interaction: harvest, place, refuel ────────────────────── */
+
+  _interact() {
+    const p = this.player;
+
+    // a placeable in hand, aimed at open ground, takes priority
+    const node = this.resources.targetFor(p);
+    const built = this.placeables.targetFor(p);
+
+    if (built && !node) {
+      if (built.kind === 'campfire') {
+        if (this.inventory.count('wood') > 0 || this.inventory.count('branch') > 0) {
+          const used = this.inventory.count('wood') > 0 ? 'wood' : 'branch';
+          this.inventory.remove(used, 1);
+          this.placeables.refuel(built, used === 'wood' ? 0.45 : 0.2);
+          this.hud.toast(`FED THE FIRE (-1 ${ITEMS[used].name})`);
+          this.audio.footstep(0.4, false);
+        } else {
+          this.hud.toast('NO FUEL TO BURN', true);
+        }
+        return;
+      }
+      if (built.kind === 'shelter') { this._sleep(); return; }
     }
 
-    if (this.exit.live && this.player.position.distanceTo(this.exit.position) < 5.2) {
-      this.end('escaped');
+    if (node) { this._harvest(node); return; }
+  }
+
+  _harvest(node) {
+    const { drops, done, blocked } = this.resources.harvest(node, this.inventory);
+    if (blocked) {
+      this.hud.toast(blocked, true);
+      return;
     }
+    this.audio.footstep(0.85, false);
+    this.player.addShake(0.12);
+
+    if (!drops) return;
+    const parts = [];
+    for (const [id, n] of Object.entries(drops)) {
+      const added = this.inventory.add(id, n);
+      if (added > 0) parts.push(`+${added} ${ITEMS[id].name}`);
+      else parts.push('PACK FULL');
+    }
+    if (parts.length) this.hud.toast(parts.join('  '));
+    this.pack?.render();
+    if (done) this.postfx.glitch(0.15);
+  }
+
+  /** Q places the first placeable in the pack — fire before shelter. */
+  _placeHeld() {
+    for (const id of ['campfire', 'shelter']) {
+      if (this.inventory.count(id) > 0) { this.placeItem(id); return; }
+    }
+    this.hud.toast('NOTHING TO PLACE — CRAFT A CAMPFIRE', true);
+  }
+
+  /** Place a craftable from the inventory at the player's feet. */
+  placeItem(id) {
+    const def = ITEMS[id];
+    if (!def?.place || this.inventory.count(id) < 1) return false;
+    const f = this.player.forward();
+    const x = this.player.position.x + f.x * 2.0;
+    const z = this.player.position.z + f.z * 2.0;
+
+    if (def.place === 'campfire') this.placeables.placeFire(x, z);
+    else this.placeables.placeShelter(x, z, this.player.yaw);
+
+    this.inventory.remove(id, 1);
+    this.hud.toast(`PLACED ${def.name}`);
+    this.pack?.render();
+    return true;
+  }
+
+  /** Sleep in a shelter: skip to dawn at the cost of hunger and thirst. */
+  _sleep() {
+    if (!this.daynight.isNight) {
+      this.hud.toast('NOT TIRED YET — SLEEP AFTER DARK', true);
+      return;
+    }
+    const hours = this.daynight.hoursToDawn;
+    const seconds = (hours / 24) * DAY_LENGTH;
+    this.daynight.t = 0.26;
+    this.daynight.day += this.daynight.t < 0.26 ? 1 : 0;
+    this.survival.hunger = Math.max(0, this.survival.hunger - seconds * (1 / 900));
+    this.survival.thirst = Math.max(0, this.survival.thirst - seconds * (1 / 540));
+    this.survival.stamina = 1;
+    this.survival.heal(0.25);
+    this.daynight.apply();
+    this.postfx.setFade(1);
+    this.postfx.fadeTo(0);
+    this.hud.toast('SLEPT UNTIL DAWN');
+    this._onNewDay();
+  }
+
+  consume(id) {
+    const def = ITEMS[id];
+    if (!def || def.tag !== 'food' || this.inventory.count(id) < 1) return;
+    this.inventory.remove(id, 1);
+    if (def.food) this.survival.eat(def.food);
+    if (def.thirst) this.survival.drink(def.thirst);
+    if (def.health) def.health > 0 ? this.survival.heal(def.health) : this.survival.hurt(-def.health);
+    this.hud.toast(`ATE ${def.name}`);
+    this.pack?.render();
   }
 
   _stepEnding(dt) {
@@ -565,38 +753,66 @@ export class Game {
     this.postfx.update(dt, {
       staticLevel: this._hordeStatic,
       proximity: this._hordeProximity,
+      daylight: this.daynight.daylight,
     });
 
     if (this._hordeProximity > 0.55) this.player.addShake(dt * this._hordeProximity * 0.9);
   }
 
-  _updateHud() {
-    this.hud.setTime(this.elapsed);
-    this.hud.setMeters(this.player.battery, this.player.stamina);
+  _updateHud(fire, shelter) {
+    const dn = this.daynight;
+    this.hud.setClock(dn.day, dn.clockText, dn.state.name);
+    this.hud.setVitals(this.survival);
 
-    // Contextual hint line, highest priority first.
-    const { item, distance } = this.fragments.targetFor(this.player);
+    // held tool + status
+    const axe = this.inventory.tool('axe') ? 'AXE' : null;
+    const pick = this.inventory.tool('pick') ? 'PICK' : null;
+    const tools = [axe, pick].filter(Boolean).join(' · ');
+    const status = fire ? '<b>BY THE FIRE</b>' : shelter ? '<b>SHELTERED</b>' : '';
+    this.hud.setHeld([tools && `CARRYING ${tools}`, status].filter(Boolean).join('  —  '));
+
+    // ── the centre prompt
+    const node = this.resources.targetFor(this.player);
+    const built = this.placeables.targetFor(this.player);
+
+    if (node) {
+      const d = this.resources.describe(node, this.inventory);
+      this.hud.setPrompt({
+        label: d.label,
+        key: d.needs ? `NEEDS A ${d.needs.toUpperCase()}` : '<b>[E]</b> HARVEST',
+        progress: d.progress,
+        blocked: Boolean(d.needs),
+      });
+    } else if (built?.kind === 'campfire') {
+      this.hud.setPrompt({
+        label: built.lit ? `CAMPFIRE — FUEL ${Math.round(built.fuel * 100)}%` : 'CAMPFIRE — OUT',
+        key: '<b>[E]</b> ADD FUEL',
+        progress: built.fuel,
+        blocked: false,
+      });
+    } else if (built?.kind === 'shelter') {
+      this.hud.setPrompt({
+        label: 'LEAN-TO',
+        key: dn.isNight ? '<b>[E]</b> SLEEP UNTIL DAWN' : 'SLEEP AFTER DARK',
+        progress: 1,
+        blocked: !dn.isNight,
+      });
+    } else {
+      this.hud.setPrompt(null);
+    }
+
+    // ── the hint line: whatever is most urgent
     let hint = '';
-
-    const note = this.notes.targetFor(this.player);
-    if (note) {
-      hint = `<b>[E]</b> READ NOTE`;
-    } else if (item) {
-      hint = `<b>[E]</b> TAKE FRAGMENT`;
-      void distance;
-    } else if (this.hud.lookFallback) {
+    if (this.hud.lookFallback) {
       hint = 'POINTER LOCK BLOCKED — <b>CLICK AND DRAG</b> TO LOOK';
-    } else if (this.exit.live) {
-      const d = this.player.position.distanceTo(this.exit.position);
-      hint = `THE GATE — ${Math.round(d)}M ${this._bearingTo(this.exit.position)}`;
-    } else if (this.player.battery < 0.2) {
-      hint = 'BATTERY FAILING — <b>[F]</b> TO SAVE IT';
     } else if (this._chaseNear) {
       hint = '<b>RUN</b>';
-    } else if (this.entities.some((e) => e.state === STATE.CHARGE)) {
-      hint = '<b>RUN</b>';
-    } else if (this.fragments.found === 0 && this.elapsed < 30) {
-      hint = 'SWEEP YOUR LIGHT ACROSS THE TREES';
+    } else if (this.survival.mostUrgent) {
+      hint = `${this.survival.mostUrgent} CRITICAL`;
+    } else if (dn.isNight && !fire) {
+      hint = `DARK — ${dn.hoursToDawn.toFixed(1)}H TO DAWN`;
+    } else if (this.inventory.used === 0) {
+      hint = '<b>[E]</b> AT TREES AND ROCKS · <b>[TAB]</b> FOR PACK';
     }
     this.hud.setHint(hint);
   }
@@ -650,13 +866,11 @@ export class Game {
 
   dispose(full = true) {
     this._staring = false;
-    this._fogTarget = 0.020;
-    this.fog.density = 0.020;
-    this.moon.intensity = MOON_BASE;
-    this.skyLight.intensity = SKY_BASE;
+    // Fog and lighting live on the day/night cycle now and survive a rebuild;
+    // resetting them here would fight the clock.
 
     for (const e of this.entities ?? []) e.dispose?.();
-    for (const part of [this.fragments, this.notes, this.props, this.forest, this.grass, this.skyDome, this.buildings]) part?.dispose?.();
+    for (const part of [this.fragments, this.notes, this.props, this.forest, this.grass, this.skyDome, this.buildings, this.resources, this.placeables]) part?.dispose?.();
     if (this.terrain) { this.scene.remove(this.terrain.mesh); this.terrain.dispose(); }
     for (const name of ['forest', 'props', 'fragments', 'entity', 'buildings']) {
       const obj = this.scene.getObjectByName(name);
@@ -666,12 +880,13 @@ export class Game {
     if (this.player) {
       this.player.rig?.removeFromParent();
     }
-    for (const name of ['sky', 'grass', 'motes']) {
+    for (const name of ['sky', 'grass', 'motes', 'resources', 'placeables']) {
       const obj = this.scene.getObjectByName(name);
       if (obj) this.scene.remove(obj);
     }
     this.terrain = this.forest = this.props = this.fragments = this.entity = this.player = null;
     this.grass = this.skyDome = this.buildings = this.notes = this._killer = null;
+    this.resources = this.placeables = null;
     this.entities = [];
     this.exit = null;
 

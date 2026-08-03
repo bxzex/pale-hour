@@ -22,27 +22,37 @@
       </div>
 
       <div class="hud__topright">
-        <div class="frag">
-          <span class="frag__n" id="hud-found">0</span><span class="frag__slash">/</span><span class="frag__t" id="hud-total">8</span>
-        </div>
-        <div class="frag__label">FRAGMENTS</div>
-        <div class="notes" id="hud-notes"></div>
+        <div class="daycount"><span id="hud-day">DAY 1</span></div>
+        <div class="tod"><span id="hud-tod">06:00</span> · <span id="hud-phase">DAWN</span></div>
       </div>
 
       <div class="hud__botleft">
-        <div class="meter">
-          <div class="meter__label">BATTERY</div>
-          <div class="meter__track"><div class="meter__fill" id="hud-battery"></div></div>
-        </div>
-        <div class="meter">
-          <div class="meter__label">BREATH</div>
-          <div class="meter__track"><div class="meter__fill meter__fill--breath" id="hud-stamina"></div></div>
+        <div class="vitals">
+          <div class="vital" data-v="health"><span class="vital__k">HEALTH</span>
+            <span class="vital__track"><i id="v-health"></i></span></div>
+          <div class="vital" data-v="hunger"><span class="vital__k">FOOD</span>
+            <span class="vital__track"><i id="v-hunger"></i></span></div>
+          <div class="vital" data-v="thirst"><span class="vital__k">WATER</span>
+            <span class="vital__track"><i id="v-thirst"></i></span></div>
+          <div class="vital" data-v="warmth"><span class="vital__k">WARMTH</span>
+            <span class="vital__track"><i id="v-warmth"></i></span></div>
+          <div class="vital" data-v="stamina"><span class="vital__k">BREATH</span>
+            <span class="vital__track"><i id="v-stamina"></i></span></div>
         </div>
       </div>
 
       <div class="hud__botright">
         <div class="hint" id="hud-hint"></div>
+        <div class="held" id="hud-held"></div>
       </div>
+
+      <div class="prompt" id="hud-prompt">
+        <div class="prompt__label" id="prompt-label"></div>
+        <div class="prompt__bar"><i id="prompt-fill"></i></div>
+        <div class="prompt__key" id="prompt-key"></div>
+      </div>
+
+      <div class="toasts" id="toasts"></div>
 
       <div class="crosshair"></div>
       <div class="vhs-bars"></div>
@@ -255,6 +265,28 @@
         <div class="overbox__btns">
           <button class="mbtn mbtn--primary" data-act="retry"><span class="mbtn__label">RUN AGAIN</span></button>
           <button class="mbtn" data-act="quit"><span class="mbtn__label">MAIN MENU</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ INVENTORY / CRAFTING ═══ -->
+    <div id="pack" class="screen screen--panel" hidden>
+      <div class="noise"></div>
+      <div class="panel panel--wide">
+        <div class="panel__head">
+          <h2>PACK</h2>
+          <span class="panel__sub" id="pack-slots"></span>
+          <button class="xbtn" data-act="close-pack">CLOSE &nbsp;[TAB]</button>
+        </div>
+        <div class="pack">
+          <section class="pack__col">
+            <h3 class="pack__h">CARRYING</h3>
+            <div class="pack__grid" id="pack-items"></div>
+          </section>
+          <section class="pack__col pack__col--craft">
+            <h3 class="pack__h">CRAFT</h3>
+            <div class="pack__recipes" id="pack-recipes"></div>
+          </section>
         </div>
       </div>
     </div>

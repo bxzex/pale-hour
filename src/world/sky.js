@@ -147,6 +147,14 @@ export class Sky {
     this.group.position.set(camera.position.x, 0, camera.position.z);
   }
 
+  /** Stars fade out with the sunrise. Driven by the day/night grade. */
+  setStarOpacity(v) {
+    this.starMat.uniforms.uOpacity.value = v;
+    const show = v > 0.02;
+    this.stars.visible = show;
+    this.moonGroup.visible = show;
+  }
+
   /** Dim the sky as the run tightens — the world closes over you. */
   setDim(t) {
     this.starMat.uniforms.uOpacity.value = 1 - t * 0.72;
