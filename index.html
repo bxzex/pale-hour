@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>PALE HOUR</title>
+    <meta name="description" content="An open-source first-person horror game. Find eight fragments before the Pale Hour finds you." />
+    <meta name="theme-color" content="#08080a" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2308080a'/%3E%3Crect x='13' y='6' width='6' height='20' fill='%23e8e4d9'/%3E%3C/svg%3E" />
+    <script type="module" crossorigin src="/pale-hour/assets/index-DY6wdX1X.js"></script>
+    <link rel="stylesheet" crossorigin href="/pale-hour/assets/index-B2c8LEnR.css">
+  </head>
+  <body>
+    <canvas id="scene"></canvas>
+
+    <!-- ═══ HUD ═══ -->
+    <div id="hud" class="hud" aria-hidden="true">
+      <div class="hud__grain"></div>
+
+      <div class="hud__topleft">
+        <div class="rec"><span class="rec__dot"></span>REC</div>
+        <div class="tape" id="hud-clock">00:00:00</div>
+      </div>
+
+      <div class="hud__topright">
+        <div class="daycount"><span id="hud-day">DAY 1</span></div>
+        <div class="tod"><span id="hud-tod">06:00</span> · <span id="hud-phase">DAWN</span></div>
+      </div>
+
+      <div class="hud__botleft">
+        <div class="vitals">
+          <div class="vital" data-v="health"><span class="vital__k">HEALTH</span>
+            <span class="vital__track"><i id="v-health"></i></span></div>
+          <div class="vital" data-v="hunger"><span class="vital__k">FOOD</span>
+            <span class="vital__track"><i id="v-hunger"></i></span></div>
+          <div class="vital" data-v="thirst"><span class="vital__k">WATER</span>
+            <span class="vital__track"><i id="v-thirst"></i></span></div>
+          <div class="vital" data-v="warmth"><span class="vital__k">WARMTH</span>
+            <span class="vital__track"><i id="v-warmth"></i></span></div>
+          <div class="vital" data-v="stamina"><span class="vital__k">BREATH</span>
+            <span class="vital__track"><i id="v-stamina"></i></span></div>
+        </div>
+      </div>
+
+      <div class="hud__botright">
+        <div class="hint" id="hud-hint"></div>
+        <div class="held" id="hud-held"></div>
+      </div>
+
+      <div class="prompt" id="hud-prompt">
+        <div class="prompt__label" id="prompt-label"></div>
+        <div class="prompt__bar"><i id="prompt-fill"></i></div>
+        <div class="prompt__key" id="prompt-key"></div>
+      </div>
+
+      <div class="toasts" id="toasts"></div>
+
+      <div class="crosshair"></div>
+      <div class="vhs-bars"></div>
+    </div>
+
+    <!-- ═══ SUBTITLE / WHISPER LINE ═══ -->
+    <div id="whisper" class="whisper"></div>
+
+    <!-- ═══ MENU ═══ -->
+    <div id="menu" class="screen screen--menu">
+      <div class="noise"></div>
+      <div class="scan"></div>
+
+      <div class="menu">
+        <div class="menu__marks">
+          <span>+</span><span>+</span><span>+</span><span>+</span>
+        </div>
+
+        <header class="menu__head">
+          <div class="menu__kicker">
+            <span>NO&nbsp;SIGNAL</span><span class="menu__kicker-rule"></span><span id="menu-ver">v1.0</span>
+          </div>
+          <h1 class="menu__title" data-text="PALE HOUR">
+            <span>PALE</span><span class="menu__title-b">HOUR</span>
+          </h1>
+          <p class="menu__tag">
+            Eight fragments. One forest.<br />
+            Something is already counting.
+          </p>
+        </header>
+
+        <nav class="menu__nav" id="menu-nav">
+          <button class="mbtn mbtn--primary" data-act="play">
+            <span class="mbtn__idx">01</span><span class="mbtn__label">BEGIN DESCENT</span><span class="mbtn__arrow">▸</span>
+          </button>
+          <button class="mbtn" data-act="difficulty">
+            <span class="mbtn__idx">02</span><span class="mbtn__label">DIFFICULTY</span><span class="mbtn__val" id="menu-diff">DREAD</span>
+          </button>
+          <button class="mbtn" data-act="options">
+            <span class="mbtn__idx">03</span><span class="mbtn__label">OPTIONS</span><span class="mbtn__arrow">▸</span>
+          </button>
+          <button class="mbtn" data-act="howto">
+            <span class="mbtn__idx">04</span><span class="mbtn__label">HOW TO SURVIVE</span><span class="mbtn__arrow">▸</span>
+          </button>
+          <button class="mbtn" data-act="credits">
+            <span class="mbtn__idx">05</span><span class="mbtn__label">CREDITS</span><span class="mbtn__arrow">▸</span>
+          </button>
+        </nav>
+
+        <footer class="menu__foot">
+          <div class="menu__foot-l">
+            <span class="tag">OPEN SOURCE</span>
+            <span class="tag">MIT</span>
+            <span class="tag">WEBGL</span>
+          </div>
+          <a class="menu__foot-r" href="https://github.com/bxzex/pale-hour" target="_blank" rel="noopener">
+            github.com/bxzex/pale-hour ↗
+          </a>
+        </footer>
+      </div>
+    </div>
+
+    <!-- ═══ OPTIONS ═══ -->
+    <div id="options" class="screen screen--panel" hidden>
+      <div class="noise"></div>
+      <div class="panel">
+        <div class="panel__head"><h2>OPTIONS</h2><button class="xbtn" data-act="back">CLOSE ✕</button></div>
+        <div class="panel__body">
+          <label class="row">
+            <span class="row__k">MASTER VOLUME</span>
+            <input type="range" id="opt-volume" min="0" max="100" step="1" />
+            <output id="opt-volume-out">70</output>
+          </label>
+          <label class="row">
+            <span class="row__k">MOUSE SENSITIVITY</span>
+            <input type="range" id="opt-sens" min="20" max="300" step="5" />
+            <output id="opt-sens-out">100</output>
+          </label>
+          <label class="row">
+            <span class="row__k">FIELD OF VIEW</span>
+            <input type="range" id="opt-fov" min="60" max="105" step="1" />
+            <output id="opt-fov-out">75</output>
+          </label>
+          <label class="row">
+            <span class="row__k">VHS / GRAIN</span>
+            <input type="range" id="opt-grain" min="0" max="200" step="5" />
+            <output id="opt-grain-out">100</output>
+          </label>
+          <label class="row">
+            <span class="row__k">RENDER SCALE</span>
+            <input type="range" id="opt-scale" min="50" max="100" step="5" />
+            <output id="opt-scale-out">100</output>
+          </label>
+          <label class="row row--toggle">
+            <span class="row__k">CAMERA SHAKE</span>
+            <input type="checkbox" id="opt-shake" />
+            <span class="switch" aria-hidden="true"></span>
+          </label>
+          <label class="row row--toggle">
+            <span class="row__k">INVERT Y AXIS</span>
+            <input type="checkbox" id="opt-inverty" />
+            <span class="switch" aria-hidden="true"></span>
+          </label>
+          <label class="row">
+            <span class="row__k">WORLD SEED</span>
+            <input type="text" id="opt-seed" class="txt" placeholder="random" spellcheck="false" />
+          </label>
+          <p class="panel__note">
+            Settings save to this browser. Leave the seed empty for a new forest every run —
+            or share a seed so a friend walks the exact same trees.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ DIFFICULTY ═══ -->
+    <div id="difficulty" class="screen screen--panel" hidden>
+      <div class="noise"></div>
+      <div class="panel">
+        <div class="panel__head"><h2>DIFFICULTY</h2><button class="xbtn" data-act="back">CLOSE ✕</button></div>
+        <div class="panel__body panel__body--cards" id="diff-cards"></div>
+      </div>
+    </div>
+
+    <!-- ═══ HOW TO ═══ -->
+    <div id="howto" class="screen screen--panel" hidden>
+      <div class="noise"></div>
+      <div class="panel">
+        <div class="panel__head"><h2>HOW TO SURVIVE</h2><button class="xbtn" data-act="back">CLOSE ✕</button></div>
+        <div class="panel__body">
+          <div class="keys">
+            <div class="key"><kbd>W A S D</kbd><span>Move</span></div>
+            <div class="key"><kbd>SHIFT</kbd><span>Sprint — costs breath, and it hears you</span></div>
+            <div class="key"><kbd>CTRL</kbd><span>Crouch — slow, quiet, small</span></div>
+            <div class="key"><kbd>F</kbd><span>Flashlight — light finds fragments, and it finds you</span></div>
+            <div class="key"><kbd>E</kbd><span>Take fragment</span></div>
+            <div class="key"><kbd>ESC</kbd><span>Pause</span></div>
+          </div>
+          <ol class="rules">
+            <li><b>Collect eight fragments.</b> They are nailed to trees, walls and ruins. Your flashlight makes them glow at distance.</li>
+            <li><b>Every fragment wakes it further.</b> It moves faster, closer, and more often. Eight is not a countdown to safety — it is a countdown to the exit.</li>
+            <li><b>Never hold your gaze.</b> Looking at it fills the static. When the static fills, the tape ends.</li>
+            <li><b>Break line of sight and keep moving.</b> Trees, walls and darkness cut the signal. Standing still does not.</li>
+            <li><b>Kill the light to hide.</b> A dark screen is safer than a bright corpse — but the fragments stay hidden too.</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ CREDITS ═══ -->
+    <div id="credits" class="screen screen--panel" hidden>
+      <div class="noise"></div>
+      <div class="panel">
+        <div class="panel__head"><h2>CREDITS</h2><button class="xbtn" data-act="back">CLOSE ✕</button></div>
+        <div class="panel__body">
+          <div class="cred">
+            <div class="cred__k">BUILT BY</div>
+            <div class="cred__v">bxzex — <a href="https://github.com/bxzex" target="_blank" rel="noopener">github.com/bxzex</a></div>
+          </div>
+          <div class="cred">
+            <div class="cred__k">ENGINE</div>
+            <div class="cred__v">three.js (MIT) · WebGL2 · Web Audio API</div>
+          </div>
+          <div class="cred">
+            <div class="cred__k">ASSETS</div>
+            <div class="cred__v">
+              100% procedural. Every texture is drawn to a canvas at load, every model is built from
+              geometry in code, and every sound is synthesised in the browser. There is not a single
+              binary asset in this repository.
+            </div>
+          </div>
+          <div class="cred">
+            <div class="cred__k">INSPIRED BY</div>
+            <div class="cred__v">Slender: The Eight Pages · Analog horror · Found footage</div>
+          </div>
+          <div class="cred">
+            <div class="cred__k">LICENSE</div>
+            <div class="cred__v">MIT. Fork it, reskin it, make it worse. Make it scarier.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ PAUSE ═══ -->
+    <div id="pause" class="screen screen--dim" hidden>
+      <div class="noise"></div>
+      <div class="pausebox">
+        <div class="pausebox__tag">TAPE PAUSED</div>
+        <h2>PAUSED</h2>
+        <div class="pausebox__stats">
+          <div><span id="pause-found">0</span>/<span id="pause-total">8</span> FRAGMENTS</div>
+          <div id="pause-time">00:00:00</div>
+        </div>
+        <div class="pausebox__btns">
+          <button class="mbtn mbtn--primary" data-act="resume"><span class="mbtn__label">RESUME</span></button>
+          <button class="mbtn" data-act="options"><span class="mbtn__label">OPTIONS</span></button>
+          <button class="mbtn" data-act="quit"><span class="mbtn__label">ABANDON RUN</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ END SCREENS ═══ -->
+    <div id="over" class="screen screen--over" hidden>
+      <div class="noise noise--heavy"></div>
+      <div class="overbox">
+        <div class="overbox__tag" id="over-tag">SIGNAL LOST</div>
+        <h2 class="overbox__title" id="over-title">CAUGHT</h2>
+        <p class="overbox__sub" id="over-sub"></p>
+        <div class="overbox__stats" id="over-stats"></div>
+        <div class="overbox__btns">
+          <button class="mbtn mbtn--primary" data-act="retry"><span class="mbtn__label">RUN AGAIN</span></button>
+          <button class="mbtn" data-act="quit"><span class="mbtn__label">MAIN MENU</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ INVENTORY / CRAFTING ═══ -->
+    <div id="pack" class="screen screen--panel" hidden>
+      <div class="noise"></div>
+      <div class="panel panel--wide">
+        <div class="panel__head">
+          <h2>PACK</h2>
+          <span class="panel__sub" id="pack-slots"></span>
+          <button class="xbtn" data-act="close-pack">CLOSE &nbsp;[TAB]</button>
+        </div>
+        <div class="pack">
+          <section class="pack__col">
+            <h3 class="pack__h">CARRYING</h3>
+            <div class="pack__grid" id="pack-items"></div>
+          </section>
+          <section class="pack__col pack__col--craft">
+            <h3 class="pack__h">CRAFT</h3>
+            <div class="pack__recipes" id="pack-recipes"></div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ NOTE READER ═══ -->
+    <div id="reader" class="screen screen--reader" hidden>
+      <div class="noise"></div>
+      <article class="doc">
+        <div class="doc__edge"></div>
+        <h2 class="doc__title" id="reader-title"></h2>
+        <div class="doc__body" id="reader-body"></div>
+        <footer class="doc__foot">
+          <span id="reader-count"></span>
+          <button class="xbtn" data-act="close-reader">CLOSE &nbsp;[E]</button>
+        </footer>
+      </article>
+    </div>
+
+    <!-- ═══ INTRO CARDS ═══ -->
+    <div id="intro" class="screen screen--intro" hidden>
+      <div class="noise"></div>
+      <div class="scan"></div>
+      <div class="card">
+        <div class="card__kicker" id="intro-kicker"></div>
+        <p class="card__body" id="intro-body"></p>
+        <button class="card__next" id="intro-next">CONTINUE ▸</button>
+        <div class="card__dots" id="intro-dots"></div>
+      </div>
+    </div>
+
+    <!-- ═══ BOOT / LOADING ═══ -->
+    <div id="boot" class="screen screen--boot">
+      <div class="boot">
+        <div class="boot__bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="boot__log" id="boot-log"></div>
+        <div class="boot__track"><div class="boot__fill" id="boot-fill"></div></div>
+        <button class="boot__go" id="boot-go" hidden>▸ PRESS TO ENTER</button>
+      </div>
+    </div>
+
+    <div id="rotate" class="screen screen--rotate" hidden>
+      <p>PALE HOUR needs a keyboard and mouse.<br />Open it on a desktop browser.</p>
+    </div>
+
+  </body>
+</html>
