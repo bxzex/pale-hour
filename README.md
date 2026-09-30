@@ -4,7 +4,7 @@
 
 **An open-source first-person horror game for the browser.**
 
-Eight fragments. One forest. Something is already counting.
+Something in these woods only moves when you aren't looking.
 
 [**▸ PLAY IN YOUR BROWSER**](https://bxzex.github.io/pale-hour/) · [Report a bug](https://github.com/bxzex/pale-hour/issues) · MIT licensed
 
@@ -14,7 +14,7 @@ Eight fragments. One forest. Something is already counting.
 
 ## What it is
 
-An open-world survival game in a forest that is safe in daylight and genuinely not at night. It runs entirely in the browser on WebGL2, and **it ships with no asset files at all** — every texture is painted to a canvas at load, every model is assembled from primitives in code, and every sound is synthesised with the Web Audio API.
+An open-world survival game in a forest that is safe in daylight and genuinely not at night. It runs entirely in the browser on WebGL2, and **it ships with no asset files at all**. Every texture is painted to a canvas at load, every model is assembled from primitives in code, and every sound is synthesised with the Web Audio API.
 
 The loop is the one the genre settled on, because it works: gather, craft, build, and get warm before dark.
 
@@ -24,30 +24,30 @@ You start with nothing. Sticks and loose stone are lying on the ground; berry bu
 
 | | |
 |---|---|
-| **Five things can kill you** | Health, food, water, warmth, breath. Meters don't kill you directly — they drain *health*, so an empty meter is a spiral you can still escape rather than an instant loss. |
+| **Five things can kill you** | Health, food, water, warmth, breath. Meters don't kill you directly. They drain *health*, so an empty meter is a spiral you can still escape rather than an instant loss. |
 | **Water is the fastest clock** | Thirst runs out in about nine minutes, hunger in fifteen. You have to triage. |
 | **Warmth is the one the world attacks** | Daylight rewarms you, night takes it away, and fire beats both. That is what gives the day/night cycle teeth. |
 | **Tools gate progress** | Bare hands strip a tree slowly and cannot touch rock at all. An axe makes wood practical; a pick opens rock and iron ore. |
-| **Fire is the centre of gravity** | A campfire is warmth, light, safety and the only cooking station — and it burns fuel, so it is something you keep feeding. |
+| **Fire is the centre of gravity** | A campfire is warmth, light, safety and the only cooking station. It also burns fuel, so it is something you keep feeding. |
 | **Shelter buys the night** | A lean-to blocks the cold and lets you sleep through to dawn, at the cost of the hunger and thirst those hours would have taken. |
 
 ## The night
 
-A full day is about sixteen real minutes, and the cycle is a keyframed grade — sun colour and angle, ambient light, fog, star opacity all move together through dawn, midday, dusk and dead of night.
+A full day is about sixteen real minutes, and the cycle is a keyframed grade: sun colour and angle, ambient light, fog, star opacity all move together through dawn, midday, dusk and dead of night.
 
 Night is mostly about cold and dark. But occasionally, in deep night, away from any lit fire, something wakes up. It is rare on purpose: most nights are a resource problem, and the ones that are not are memorable. Reach a fire and it loses interest.
 
-The camcorder grade follows the sun too — grain, chroma bleed, vignette and desaturation all back off in daylight and return after dusk, so day and night do not just differ in brightness.
+The camcorder grade follows the sun too. Grain, chroma bleed, vignette and desaturation all back off in daylight and return after dusk, so day and night do not just differ in brightness.
 
 ## Controls
 
 | Key | Action |
 |---|---|
 | `W` `A` `S` `D` | Move |
-| `Shift` | Sprint — costs breath |
+| `Shift` | Sprint (costs breath) |
 | `Ctrl` / `C` | Crouch |
 | `E` | Harvest · drink · feed a fire · sleep |
-| `Tab` / `I` | Pack — inventory and crafting |
+| `Tab` / `I` | Pack: inventory and crafting |
 | `Q` | Place a campfire or shelter |
 | `F` | Flashlight |
 | `Esc` | Pause |
@@ -136,17 +136,17 @@ Two notes for anyone reading the code:
 
 - **Light intensities are in candela.** three.js has used physical light units since r155, so punctual lights need roughly 4π times the pre-r155 numbers. See `TORCH_CORE` in `player.js`.
 - **The torch is deliberately not physically correct.** A realistic beam clips the near ground to pure white under a fixed exposure and the bloom smears it across the frame. `TORCH_DECAY` is 1.05 rather than 2.0 so falloff stays gentle. Tuning these values is a look-at-it job, not a maths job.
-- **Albedo is decoded from sRGB.** A texture value of `40/255` becomes about `0.02` linear — nearly black no matter how bright the lights are. The base textures are deliberately lighter than they look.
+- **Albedo is decoded from sRGB.** A texture value of `40/255` becomes about `0.02` linear, which is nearly black no matter how bright the lights are. The base textures are deliberately lighter than they look.
 
 ## Tuning it yourself
 
 Most of the feel lives in two places:
 
-- `src/core/survival.js` — the `RATES` table: how fast every meter drains and how much damage an empty one does. The whole difficulty of the survival layer is one object.
-- `src/world/daynight.js` — the `GRADE` table: one row per time of day. Adding a new time of day means adding a row, not touching five systems.
-- `src/core/items.js` — `ITEMS` and `RECIPES`. The progression ladder is deliberately short.
-- `src/core/settings.js` — the `DIFFICULTIES` table: how many watchers and stalkers, how fast chasers move, when each wakes, spawn distances, reposition interval, how fast static fills and drains, battery drain.
-- `src/entities/entity.js` — the four rules the AI is built on are written at the top of the file. Change them and it becomes a different game.
+- `src/core/survival.js`: the `RATES` table: how fast every meter drains and how much damage an empty one does. The whole difficulty of the survival layer is one object.
+- `src/world/daynight.js`: the `GRADE` table: one row per time of day. Adding a new time of day means adding a row, not touching five systems.
+- `src/core/items.js`: `ITEMS` and `RECIPES`. The progression ladder is deliberately short.
+- `src/core/settings.js`: the `DIFFICULTIES` table: how many watchers and stalkers, how fast chasers move, when each wakes, spawn distances, reposition interval, how fast static fills and drains, battery drain.
+- `src/entities/entity.js`: the four rules the AI is built on are written at the top of the file. Change them and it becomes a different game.
 
 ## Contributing
 
@@ -160,4 +160,4 @@ Built by [bxzex](https://github.com/bxzex). Engine: [three.js](https://threejs.o
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Fork it, reskin it, make it scarier.
+MIT, see [LICENSE](LICENSE). Fork it, reskin it, make it scarier.
